@@ -46,6 +46,8 @@ export default function OrdersManager() {
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
   const [cashReceived, setCashReceived] = useState('');
+  const [sendReceiptOnComplete, setSendReceiptOnComplete] = useState(true);
+  const [receiptNoticeOrder, setReceiptNoticeOrder] = useState(null);
 
   // Modal para captura manual de pedido
   const [isManualOrderOpen, setIsManualOrderOpen] = useState(false);
@@ -89,15 +91,77 @@ export default function OrdersManager() {
     });
   }, [orders, activeTab, searchQuery]);
 
+  // Generar y enviar comprobante formal de compra por WhatsApp
+  const sendWhatsAppReceipt = (order, customPaymentMethod, customCashReceived) => {
+    const cleanPhone = (order.customerPhone || '').replace(/\D/g, '');
+    const pMethod = customPaymentMethod || order.paymentMethod || 'Efectivo';
+    const total = order.totalAmount || 0;
+    const cash = parseFloat(customCashReceived || order.cashReceived || total);
+    const change = Math.max(0, cash - total);
+
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString('es-MX', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    let text = `🧸 *¡GRACIAS POR TU COMPRA EN SR. SQUISHY!* ✨\n\n`;
+    text += `📄 *COMPROBANTE DE COMPRA Y ENTREGA*\n`;
+    text += `------------------------------------\n`;
+    text += `📋 *Folio de Pedido:* ${order.folio}\n`;
+    text += `📅 *Fecha y Hora de Entrega:* ${formattedDate}\n`;
+    text += `👤 *Cliente:* ${order.customerName}\n`;
+    text += `📍 *Lugar de Entrega:* ${order.deliveryLocationName || 'Punto de Venta Principal'}\n`;
+    text += `------------------------------------\n`;
+    text += `🛍️ *ARTÍCULOS ENTREGADOS:*\n`;
+    (order.items || []).forEach(item => {
+      text += `• *${item.quantity}x* ${item.name} — $${(item.quantity * (item.unitPrice || item.price || 0)).toFixed(2)} MXN\n`;
+    });
+    text += `------------------------------------\n`;
+    text += `💰 *TOTAL PAGADO: $${total.toFixed(2)} MXN*\n`;
+    text += `💳 *Método de Pago:* ${pMethod}\n`;
+    if (pMethod === 'Efectivo' && cash > total) {
+      text += `💵 *Efectivo Recibido:* $${cash.toFixed(2)} MXN\n`;
+      text += `🪙 *Cambio Devuelto:* $${change.toFixed(2)} MXN\n`;
+    }
+    text += `✅ *Estado:* ENTREGADO Y COBRADO\n`;
+    text += `------------------------------------\n`;
+    text += `¡Esperamos que disfrutes mucho tus squishys! Si te gustaron, ¡recomiéndanos con tus amigos! 😊🧸✨`;
+
+    const url = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+
+    window.open(url, '_blank');
+  };
+
   // Finalizar cobro y entrega
   const handleConfirmCompletion = () => {
     if (!selectedOrderForPayment) return;
 
-    completeOrder(selectedOrderForPayment.id, {
+    const cash = parseFloat(cashReceived) || selectedOrderForPayment.totalAmount;
+    const paymentInfo = {
       paymentMethod,
-      cashReceived: parseFloat(cashReceived) || selectedOrderForPayment.totalAmount
-    });
+      cashReceived: cash
+    };
 
+    completeOrder(selectedOrderForPayment.id, paymentInfo);
+
+    const orderData = {
+      ...selectedOrderForPayment,
+      paymentMethod,
+      cashReceived: cash,
+      completedAt: new Date().toISOString()
+    };
+
+    if (sendReceiptOnComplete) {
+      sendWhatsAppReceipt(orderData, paymentMethod, cash);
+    }
+
+    setReceiptNoticeOrder(orderData);
     setSelectedOrderForPayment(null);
     setCashReceived('');
   };
@@ -687,9 +751,19 @@ export default function OrdersManager() {
                   )}
 
                   {isCompleted && (
-                    <div className="p-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-center font-bold text-xs flex items-center justify-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Cobrado con {order.paymentMethod}</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 p-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-center font-bold text-xs flex items-center justify-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Cobrado con {order.paymentMethod}</span>
+                      </div>
+                      <button
+                        onClick={() => sendWhatsAppReceipt(order)}
+                        className="p-1.5 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-1 transition-colors"
+                        title="Enviar comprobante de compra por WhatsApp"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Ticket WA</span>
+                      </button>
                     </div>
                   )}
 
@@ -793,6 +867,20 @@ export default function OrdersManager() {
               )}
             </div>
 
+            {/* Opción Enviar Comprobante WhatsApp */}
+            <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200 cursor-pointer text-xs font-bold text-emerald-900 select-none">
+              <input
+                type="checkbox"
+                checked={sendReceiptOnComplete}
+                onChange={(e) => setSendReceiptOnComplete(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 accent-emerald-600 cursor-pointer"
+              />
+              <div className="flex items-center gap-1.5">
+                <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Enviar comprobante de compra por WhatsApp al cliente</span>
+              </div>
+            </label>
+
             <button
               onClick={handleConfirmCompletion}
               className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-black text-sm shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-teal-700 active:scale-98 transition-all"
@@ -800,6 +888,63 @@ export default function OrdersManager() {
               CONFIRMAR COBRO Y REGISTRAR EN VENTAS 🚀
             </button>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmación de Entrega y Envío de Comprobante Desktop */}
+      {receiptNoticeOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl text-center animate-in zoom-in-95">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto text-3xl shadow-lg shadow-emerald-500/20">
+              🎉
+            </div>
+
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 block">
+                ¡Cobro y Entrega Exitosa!
+              </span>
+              <h3 className="text-xl font-black text-slate-900 mt-0.5">
+                Pedido {receiptNoticeOrder.folio}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Cliente: <b>{receiptNoticeOrder.customerName}</b> • Total: <b>${receiptNoticeOrder.totalAmount?.toFixed(2)} MXN</b>
+              </p>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-2xl border text-left text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Método de Pago:</span>
+                <span className="font-bold text-slate-800">{receiptNoticeOrder.paymentMethod}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-medium">Lugar de Entrega:</span>
+                <span className="font-bold text-slate-800">{receiptNoticeOrder.deliveryLocationName || 'Punto de Venta'}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-1 font-bold">
+                <span className="text-slate-600">Total Liquidado:</span>
+                <span className="text-emerald-700">${receiptNoticeOrder.totalAmount?.toFixed(2)} MXN</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => sendWhatsAppReceipt(receiptNoticeOrder)}
+                className="w-full py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs shadow-lg shadow-emerald-500/25 active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Enviar / Reenviar Comprobante WhatsApp 📲</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setReceiptNoticeOrder(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs hover:bg-slate-200 active:scale-95 transition-all"
+              >
+                Listo, Continuar
+              </button>
+            </div>
           </div>
         </div>
       )}
