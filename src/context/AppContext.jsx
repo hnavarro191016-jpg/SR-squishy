@@ -1,4 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase, isSupabaseConfigured } from '../supabaseClient';
+import {
+  fetchAllFromSupabase,
+  syncProductToSupabase,
+  deleteProductFromSupabase,
+  syncOrderToSupabase,
+  syncSaleToSupabase,
+  syncPurchaseToSupabase,
+  syncInventoryKeyToSupabase
+} from '../services/supabaseSync';
 
 const AppContext = createContext();
 
@@ -47,6 +57,72 @@ export function AppProvider({ children }) {
   const [whatsappNumber, setWhatsappNumber] = useState(() => {
     return localStorage.getItem('sq_whatsapp') || '';
   });
+
+  // Sincronización Inicial con Supabase (Carga de datos y migración automática)
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    let isMounted = true;
+    async function loadCloudData() {
+      const cloudData = await fetchAllFromSupabase();
+      if (!cloudData || !isMounted) return;
+
+      if (cloudData.products && cloudData.products.length > 0) {
+        setProducts(cloudData.products);
+      } else if (products.length > 0) {
+        // Si la nube está vacía pero localmente ya teníamos productos, migrarlos a Supabase
+        products.forEach(p => syncProductToSupabase(p));
+      }
+
+      if (cloudData.inventory && Object.keys(cloudData.inventory).length > 0) {
+        setInventory(cloudData.inventory);
+      } else if (Object.keys(inventory).length > 0) {
+        Object.entries(inventory).forEach(([k, v]) => syncInventoryKeyToSupabase(k, v));
+      }
+
+      if (cloudData.orders && cloudData.orders.length > 0) {
+        setOrders(cloudData.orders);
+      } else if (orders.length > 0) {
+        orders.forEach(o => syncOrderToSupabase(o));
+      }
+
+      if (cloudData.sales && cloudData.sales.length > 0) {
+        setSales(cloudData.sales);
+      }
+
+      if (cloudData.purchases && cloudData.purchases.length > 0) {
+        setPurchases(cloudData.purchases);
+      }
+
+      if (cloudData.locations && cloudData.locations.length > 0) {
+        setLocations(cloudData.locations);
+      }
+    }
+
+    loadCloudData();
+
+    // Suscripción en Tiempo Real (Realtime WebSockets)
+    const channel = supabase
+      .channel('squishy_cloud_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
+        const fresh = await fetchAllFromSupabase();
+        if (fresh?.orders && isMounted) setOrders(fresh.orders);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, async () => {
+        const fresh = await fetchAllFromSupabase();
+        if (fresh?.inventory && isMounted) setInventory(fresh.inventory);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, async () => {
+        const fresh = await fetchAllFromSupabase();
+        if (fresh?.products && isMounted) setProducts(fresh.products);
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Persistencia en LocalStorage
   useEffect(() => {
@@ -138,9 +214,11 @@ export function AppProvider({ children }) {
   // Ajuste rápido de existencias
   const setQuickStock = (productId, newQuantity, locationId = activeLocationId) => {
     const qty = Math.max(0, parseInt(newQuantity) || 0);
+    const key = `${locationId}_${productId}`;
+    syncInventoryKeyToSupabase(key, qty);
     setInventory(prev => ({
       ...prev,
-      [`${locationId}_${productId}`]: qty
+      [key]: qty
     }));
   };
 
@@ -171,12 +249,15 @@ export function AppProvider({ children }) {
     };
 
     setProducts(prev => [...prev, newProd]);
+    syncProductToSupabase(newProd);
 
     if (Number(initialStock) > 0) {
       const key = `${targetLocationId}_${newProd.id}`;
+      const qty = Number(initialStock);
+      syncInventoryKeyToSupabase(key, qty);
       setInventory(prev => ({
         ...prev,
-        [key]: (prev[key] || 0) + Number(initialStock)
+        [key]: (prev[key] || 0) + qty
       }));
     }
 
@@ -187,7 +268,7 @@ export function AppProvider({ children }) {
   const updateProduct = ({ id, name, category, images, costPrice, salePrice, boxCost, unitsPerBox, newStock, locationId }) => {
     setProducts(prev => prev.map(p => {
       if (p.id === id) {
-        return {
+        const updated = {
           ...p,
           name: name.trim(),
           category: category.trim() || 'General',
@@ -197,25 +278,32 @@ export function AppProvider({ children }) {
           boxCostReference: Number(boxCost) || 0,
           unitsPerBoxReference: Number(unitsPerBox) || 0
         };
+        syncProductToSupabase(updated);
+        return updated;
       }
       return p;
     }));
 
     if (newStock !== undefined && locationId) {
+      const key = `${locationId}_${id}`;
+      const qty = Math.max(0, Number(newStock) || 0);
+      syncInventoryKeyToSupabase(key, qty);
       setInventory(prev => ({
         ...prev,
-        [`${locationId}_${id}`]: Math.max(0, Number(newStock) || 0)
+        [key]: qty
       }));
     }
   };
 
   // ELIMINAR PRODUCTO
   const deleteProduct = (productId) => {
+    deleteProductFromSupabase(productId);
     setProducts(prev => prev.filter(p => p.id !== productId));
     setInventory(prev => {
       const updated = { ...prev };
       Object.keys(updated).forEach(key => {
         if (key.endsWith(`_${productId}`)) {
+          syncInventoryKeyToSupabase(key, 0);
           delete updated[key];
         }
       });
@@ -258,13 +346,14 @@ export function AppProvider({ children }) {
     };
 
     setPurchases(prev => [newPurchase, ...prev]);
+    syncPurchaseToSupabase(newPurchase);
 
     if (product) {
+      const updatedProd = { ...product, costPrice: calculatedUnitCost, boxCostReference: Number(costPerBox), unitsPerBoxReference: Number(unitsPerBox) };
+      syncProductToSupabase(updatedProd);
       setProducts(prev =>
         prev.map(p =>
-          p.id === productId
-            ? { ...p, costPrice: calculatedUnitCost, boxCostReference: Number(costPerBox), unitsPerBoxReference: Number(unitsPerBox) }
-            : p
+          p.id === productId ? updatedProd : p
         )
       );
     }
@@ -272,9 +361,11 @@ export function AppProvider({ children }) {
     const destinationId = targetLocationId || activeLocationId || 'loc-2';
     setInventory(prev => {
       const key = `${destinationId}_${productId}`;
+      const nextQty = (prev[key] || 0) + totalUnits;
+      syncInventoryKeyToSupabase(key, nextQty);
       return {
         ...prev,
-        [key]: (prev[key] || 0) + totalUnits
+        [key]: nextQty
       };
     });
 
@@ -366,6 +457,7 @@ export function AppProvider({ children }) {
           : getStock(locationId, item.productId);
         
         updated[directKey] = Math.max(0, currentDirect - item.quantity);
+        syncInventoryKeyToSupabase(directKey, updated[directKey]);
 
         // Descontar también de otros almacenes para no dejar unidades fantasma
         let remainder = item.quantity;
@@ -375,6 +467,7 @@ export function AppProvider({ children }) {
             const deduct = Math.min(avail, remainder);
             updated[k] = avail - deduct;
             remainder -= deduct;
+            syncInventoryKeyToSupabase(k, updated[k]);
           }
         });
       });
@@ -382,6 +475,7 @@ export function AppProvider({ children }) {
     });
 
     setSales(prev => [newSale, ...prev]);
+    syncSaleToSupabase(newSale);
 
     return { success: true, sale: newSale };
   };
@@ -467,6 +561,7 @@ export function AppProvider({ children }) {
           : getStock(deliveryLocationId, item.productId);
 
         updated[directKey] = Math.max(0, currentDirect - item.quantity);
+        syncInventoryKeyToSupabase(directKey, updated[directKey]);
 
         // Descontar también de otros almacenes para no dejar unidades fantasma
         let remainder = item.quantity;
@@ -476,6 +571,7 @@ export function AppProvider({ children }) {
             const deduct = Math.min(avail, remainder);
             updated[k] = avail - deduct;
             remainder -= deduct;
+            syncInventoryKeyToSupabase(k, updated[k]);
           }
         });
       });
@@ -483,13 +579,19 @@ export function AppProvider({ children }) {
     });
 
     setOrders(prev => [newOrder, ...prev]);
+    syncOrderToSupabase(newOrder);
 
     return { success: true, order: newOrder };
   };
 
   // 2. AVANZAR ESTADO DEL PEDIDO (Preparado, Por Entregar, etc.)
   const advanceOrderStatus = (orderId, nextStatus) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o));
+    setOrders(prev => {
+      const updatedList = prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o);
+      const target = updatedList.find(o => o.id === orderId);
+      if (target) syncOrderToSupabase(target);
+      return updatedList;
+    });
   };
 
   // 3. COMPLETAR Y COBRAR PEDIDO (El cliente recibe y paga -> se registra como venta en Dashboard)
@@ -520,13 +622,19 @@ export function AppProvider({ children }) {
     };
 
     setSales(prev => [newSale, ...prev]);
+    syncSaleToSupabase(newSale);
 
     // Marcar el pedido como completado
-    setOrders(prev => prev.map(o => 
-      o.id === orderId 
-        ? { ...o, status: 'completado', paymentStatus: 'pagado', paymentMethod, completedAt: formattedDate } 
-        : o
-    ));
+    setOrders(prev => {
+      const updatedList = prev.map(o => 
+        o.id === orderId 
+          ? { ...o, status: 'completado', paymentStatus: 'pagado', paymentMethod, completedAt: formattedDate } 
+          : o
+      );
+      const target = updatedList.find(o => o.id === orderId);
+      if (target) syncOrderToSupabase(target);
+      return updatedList;
+    });
 
     return { success: true, sale: newSale };
   };
@@ -543,12 +651,18 @@ export function AppProvider({ children }) {
         order.items.forEach(item => {
           const key = `${order.deliveryLocationId}_${item.productId}`;
           updated[key] = (updated[key] || 0) + item.quantity;
+          syncInventoryKeyToSupabase(key, updated[key]);
         });
         return updated;
       });
     }
 
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'cancelado' } : o));
+    setOrders(prev => {
+      const updatedList = prev.map(o => o.id === orderId ? { ...o, status: 'cancelado' } : o);
+      const target = updatedList.find(o => o.id === orderId);
+      if (target) syncOrderToSupabase(target);
+      return updatedList;
+    });
 
     return { success: true };
   };
