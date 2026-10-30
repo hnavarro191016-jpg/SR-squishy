@@ -14,7 +14,14 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
-export default function Navbar({ activeTab, setActiveTab, onOpenMobileModal, onOpenAddProduct, onOpenShareCatalog }) {
+export default function Navbar({ 
+  activeTab, 
+  setActiveTab, 
+  onOpenMobileModal, 
+  onOpenAddProduct, 
+  onOpenShareCatalog,
+  onSwitchToMobile
+}) {
   const { locations, activeLocationId, setActiveLocationId, clearAllData, whatsappNumber, setWhatsappNumber, orders } = useApp();
 
   const activeOrdersCount = (orders || []).filter(o => ['nuevo', 'preparado', 'por_entregar'].includes(o.status)).length;
@@ -167,6 +174,18 @@ export default function Navbar({ activeTab, setActiveTab, onOpenMobileModal, onO
               <Wifi className="w-3.5 h-3.5" />
               <span className="hidden xl:inline">Celular</span>
             </button>
+
+            {/* Vista Móvil App */}
+            {onSwitchToMobile && (
+              <button
+                onClick={onSwitchToMobile}
+                title="Probar la experiencia de App Móvil"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs bg-pink-50 text-pink-700 border border-pink-200 hover:bg-pink-100 transition-all hover:scale-105 ml-1"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-pink-600" />
+                <span className="hidden xl:inline">Modo App Móvil</span>
+              </button>
+            )}
 
             {/* WhatsApp para Pedidos */}
             <button

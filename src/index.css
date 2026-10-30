@@ -23,8 +23,30 @@ body {
   background: #94a3b8;
 }
 
-/* Touch active styles */
+/* Touch active styles and mobile optimizations */
+html, body {
+  touch-action: manipulation;
+  overscroll-behavior-y: contain;
+}
+
 .touch-press:active {
   transform: scale(0.96);
   transition: transform 0.1s ease;
+}
+
+/* Safe area insets for mobile devices */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 1rem);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0.5rem);
+}
+
+/* Hide scrollbars for carousel / mobile chip bars */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

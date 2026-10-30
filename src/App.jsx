@@ -11,7 +11,18 @@ import OrdersManager from './components/OrdersManager';
 import MobileAccessModal from './components/MobileAccessModal';
 import ShareCatalogModal from './components/ShareCatalogModal';
 import ProductModal from './components/ProductModal';
-import { Smartphone, LayoutDashboard, Package, Store, Calculator, PlusCircle, ShoppingBag, Shield } from 'lucide-react';
+
+// Componentes exclusivos de la experiencia App Móvil
+import MobileAppHeader from './components/mobile/MobileAppHeader';
+import MobileBottomBar from './components/mobile/MobileBottomBar';
+import MobileActionSheet from './components/mobile/MobileActionSheet';
+import MobileOrderCaptureModal from './components/mobile/MobileOrderCaptureModal';
+import MobileOrdersView from './components/mobile/MobileOrdersView';
+import MobilePurchasesView from './components/mobile/MobilePurchasesView';
+import MobileInventoryView from './components/mobile/MobileInventoryView';
+import MobilePwaInstallModal from './components/mobile/MobilePwaInstallModal';
+
+import { Shield } from 'lucide-react';
 
 function AppContent() {
   const { orders } = useApp();
@@ -21,7 +32,42 @@ function AppContent() {
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
-  // Detección automática de Modo Catálogo para Clientes (URL ?catalogo=1 o ?cliente=1)
+  // Modales móviles
+  const [isOrderCaptureOpen, setIsOrderCaptureOpen] = useState(false);
+  const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
+  const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
+
+  // Detección automática de Modo Móvil
+  const checkIsMobileDevice = () => {
+    if (typeof window === 'undefined') return false;
+    const savedMode = localStorage.getItem('sq_view_mode');
+    if (savedMode === 'mobile') return true;
+    if (savedMode === 'desktop') return false;
+    const isMobileWidth = window.innerWidth < 768;
+    const isMobileAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    return isMobileWidth || isMobileAgent;
+  };
+
+  const [isMobileView, setIsMobileView] = useState(checkIsMobileDevice);
+
+  // Escuchar cambios de tamaño de pantalla si no hay preferencia manual forzada
+  useEffect(() => {
+    const handleResize = () => {
+      const savedMode = localStorage.getItem('sq_view_mode');
+      if (!savedMode) {
+        setIsMobileView(window.innerWidth < 768);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const toggleViewMode = (mode) => {
+    localStorage.setItem('sq_view_mode', mode);
+    setIsMobileView(mode === 'mobile');
+  };
+
+  // Detección de Modo Catálogo para Clientes (URL ?catalogo=1 o ?cliente=1)
   const isClientUrl = () => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search);
@@ -39,17 +85,13 @@ function AppContent() {
 
   const [isCustomerMode, setIsCustomerMode] = useState(isClientUrl);
 
-  // Escuchar cambios en la URL
   useEffect(() => {
     const handleUrlCheck = () => {
       setIsCustomerMode(isClientUrl());
     };
-
     window.addEventListener('popstate', handleUrlCheck);
     return () => window.removeEventListener('popstate', handleUrlCheck);
   }, []);
-
-  const activeOrdersCount = (orders || []).filter(o => ['nuevo', 'preparado', 'por_entregar'].includes(o.status)).length;
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -66,7 +108,7 @@ function AppContent() {
     setEditingProduct(null);
   };
 
-  // Salir del modo cliente y regresar al panel de control de administrador
+  // Salir del modo cliente y regresar al panel de control
   const handleExitCustomerMode = () => {
     const url = new URL(window.location.href);
     url.searchParams.delete('catalogo');
@@ -77,32 +119,17 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 flex flex-col antialiased selection:bg-pink-500 selection:text-white">
+      
       {/* 
-        Si entra un cliente con ?catalogo=1:
-        Se muestra el encabezado exclusivo de tienda y SE OCULTA todo el menú interno (Dashboard, Compras, etc.)
+        CASO 1: MODO CATÁLOGO CLIENTES (?catalogo=1)
+        Vista 100% blindada para compras públicas por WhatsApp sin costos ni márgenes
       */}
       {isCustomerMode ? (
-        <CustomerCatalogHeader />
-      ) : (
-        <Navbar 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          onOpenMobileModal={() => setIsMobileModalOpen(true)}
-          onOpenAddProduct={handleOpenAdd}
-          onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
-        />
-      )}
-
-      {/* Contenido según el modo */}
-      <main className="flex-1 pb-20 sm:pb-6">
-        {isCustomerMode ? (
-          /* MODO CLIENTE: Catálogo protegido, sin costos, sin márgenes, solo compras por WhatsApp */
-          <div className="space-y-4">
-            <MobilePOS 
-              isCustomerCatalogMode={true}
-            />
-            {/* Acceso para el dueño si está probando en su propio teléfono */}
+        <>
+          <CustomerCatalogHeader />
+          <main className="flex-1 pb-16">
+            <MobilePOS isCustomerCatalogMode={true} />
             <footer className="py-8 text-center text-xs text-slate-400">
               <button
                 onClick={handleExitCustomerMode}
@@ -112,10 +139,91 @@ function AppContent() {
                 <span>¿Eres el administrador? Ingresar al panel de control</span>
               </button>
             </footer>
-          </div>
-        ) : (
-          /* MODO ADMINISTRADOR: Acceso completo a todas las herramientas de negocio */
-          <>
+          </main>
+        </>
+      ) : isMobileView ? (
+        /* 
+          CASO 2: EXPERIENCIA APP MÓVIL DEDICADA
+          Diseñada para smartphone: navegación inferior, captura ágil de pedidos y compras
+        */
+        <>
+          <MobileAppHeader
+            onOpenActionSheet={() => setIsActionSheetOpen(true)}
+            onSwitchToDesktop={() => toggleViewMode('desktop')}
+            activeTab={activeTab}
+            onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
+          />
+
+          <main className="flex-1">
+            {activeTab === 'pos' && (
+              <MobilePOS
+                isMobileAppMode={true}
+                onOpenAddProduct={handleOpenAdd}
+                onEditProduct={handleOpenEdit}
+                onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
+                onOpenOrderCapture={() => setIsOrderCaptureOpen(true)}
+              />
+            )}
+            {activeTab === 'orders' && (
+              <MobileOrdersView
+                onOpenOrderCapture={() => setIsOrderCaptureOpen(true)}
+              />
+            )}
+            {activeTab === 'purchases' && (
+              <MobilePurchasesView />
+            )}
+            {activeTab === 'inventory' && (
+              <MobileInventoryView
+                onEditProduct={handleOpenEdit}
+              />
+            )}
+          </main>
+
+          {/* Barra de Navegación Inferior Móvil */}
+          <MobileBottomBar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+          />
+
+          {/* Menú de Acciones Rápidas (Bottom Sheet) */}
+          <MobileActionSheet
+            isOpen={isActionSheetOpen}
+            onClose={() => setIsActionSheetOpen(false)}
+            onOpenOrderCapture={() => setIsOrderCaptureOpen(true)}
+            onOpenAddProduct={handleOpenAdd}
+            onGoToPurchases={() => setActiveTab('purchases')}
+            onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
+            onOpenInstallGuide={() => setIsInstallGuideOpen(true)}
+          />
+
+          {/* Modal de Captura Rápida de Pedidos */}
+          <MobileOrderCaptureModal
+            isOpen={isOrderCaptureOpen}
+            onClose={() => setIsOrderCaptureOpen(false)}
+          />
+
+          {/* Guía de Instalación PWA (Agregar a Pantalla de Inicio) */}
+          <MobilePwaInstallModal
+            isOpen={isInstallGuideOpen}
+            onClose={() => setIsInstallGuideOpen(false)}
+          />
+        </>
+      ) : (
+        /* 
+          CASO 3: PANEL DE ESCRITORIO COMPLETO
+          Con tablas anchas, dashboard financiero y simulador
+        */
+        <>
+          <Navbar 
+            activeTab={activeTab} 
+            setActiveTab={setActiveTab} 
+            onOpenMobileModal={() => setIsMobileModalOpen(true)}
+            onOpenAddProduct={handleOpenAdd}
+            onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
+            onSwitchToMobile={() => toggleViewMode('mobile')}
+          />
+
+          <main className="flex-1 pb-10">
             {activeTab === 'pos' && (
               <MobilePOS 
                 onOpenAddProduct={handleOpenAdd} 
@@ -138,101 +246,31 @@ function AppContent() {
             {activeTab === 'orders' && (
               <OrdersManager />
             )}
-          </>
-        )}
-      </main>
+          </main>
+        </>
+      )}
 
-      {/* Modales Administrativos */}
+      {/* Modales Compartidos de Administración */}
       {!isCustomerMode && (
         <>
-          {/* Modal para Subir o Modificar Squishy */}
           <ProductModal
             isOpen={isAddProductOpen}
             onClose={handleCloseModal}
             productToEdit={editingProduct}
           />
 
-          {/* Modal de Conexión Móvil / QR para Vendedor */}
           <MobileAccessModal
             isOpen={isMobileModalOpen}
             onClose={() => setIsMobileModalOpen(false)}
           />
 
-          {/* Modal de Compartir Catálogo a Clientes (100% Blindado) */}
           <ShareCatalogModal
             isOpen={isShareCatalogOpen}
             onClose={() => setIsShareCatalogOpen(false)}
           />
-
-          {/* Barra de Navegación Inferior exclusiva para Móviles (Solo Administrador) */}
-          <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 py-1.5 px-3 z-40 flex items-center justify-around shadow-lg">
-            <button
-              onClick={() => setActiveTab('pos')}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl text-[10px] font-bold ${
-                activeTab === 'pos' ? 'text-pink-600 scale-105' : 'text-slate-400'
-              }`}
-            >
-              <Smartphone className="w-5 h-5 mb-0.5" />
-              <span>Vender</span>
-            </button>
-
-            <button
-              onClick={() => setIsAddProductOpen(true)}
-              className="flex flex-col items-center py-1 px-2 rounded-xl text-[10px] font-extrabold text-pink-500"
-            >
-              <PlusCircle className="w-5 h-5 mb-0.5" />
-              <span>+ Squishy</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={`relative flex flex-col items-center py-1 px-2 rounded-xl text-[10px] font-bold ${
-                activeTab === 'orders' ? 'text-emerald-600 scale-105' : 'text-slate-400'
-              }`}
-            >
-              <div className="relative">
-                <ShoppingBag className="w-5 h-5 mb-0.5" />
-                {activeOrdersCount > 0 && (
-                  <span className="absolute -top-1 -right-2 bg-emerald-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
-                    {activeOrdersCount}
-                  </span>
-                )}
-              </div>
-              <span>Pedidos</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl text-[10px] font-bold ${
-                activeTab === 'dashboard' ? 'text-slate-900 scale-105' : 'text-slate-400'
-              }`}
-            >
-              <LayoutDashboard className="w-5 h-5 mb-0.5" />
-              <span>Métricas</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('purchases')}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl text-[10px] font-bold ${
-                activeTab === 'purchases' ? 'text-slate-900 scale-105' : 'text-slate-400'
-              }`}
-            >
-              <Package className="w-5 h-5 mb-0.5" />
-              <span>Compras</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('inventory')}
-              className={`flex flex-col items-center py-1 px-2 rounded-xl text-[10px] font-bold ${
-                activeTab === 'inventory' ? 'text-slate-900 scale-105' : 'text-slate-400'
-              }`}
-            >
-              <Store className="w-5 h-5 mb-0.5" />
-              <span>Stock</span>
-            </button>
-          </div>
         </>
       )}
+
     </div>
   );
 }

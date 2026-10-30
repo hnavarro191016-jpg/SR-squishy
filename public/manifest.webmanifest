@@ -1,0 +1,18 @@
+{
+  "name": "SquishyTrack Pro — App Móvil",
+  "short_name": "SquishyApp",
+  "description": "Punto de Venta Móvil, Captura de Pedidos y Control de Compras de Squishys",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#f43f5e",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
