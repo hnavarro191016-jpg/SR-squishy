@@ -11,7 +11,7 @@ import OrdersManager from './components/OrdersManager';
 import MobileAccessModal from './components/MobileAccessModal';
 import ShareCatalogModal from './components/ShareCatalogModal';
 import ProductModal from './components/ProductModal';
-import AdminLoginModal from './components/AdminLoginModal';
+import AdminLoginPage from './components/AdminLoginPage';
 
 // Componentes exclusivos de la experiencia App Móvil
 import MobileAppHeader from './components/mobile/MobileAppHeader';
@@ -40,43 +40,66 @@ function AppContent() {
   const [cartCount, setCartCount] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
-  // AUTENTICACIÓN DE ADMINISTRADOR (Por defecto el visitante entra como CLIENTE)
+  // Detección de Modo Catálogo para Clientes (URL ?catalogo=1 o ?cliente=1)
+  const isClientUrl = () => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const cat = params.get('catalogo');
+    const cli = params.get('cliente');
+    const modo = params.get('modo');
+    const hash = (window.location.hash || '').toLowerCase();
+    const pathname = (window.location.pathname || '').toLowerCase();
+    return (
+      cat === '1' || cat === 'true' ||
+      cli === '1' || cli === 'true' ||
+      modo === 'catalogo' || modo === 'cliente' ||
+      hash.includes('catalogo') || hash.includes('cliente') ||
+      pathname.includes('/catalogo')
+    );
+  };
+
+  const [isCustomerMode, setIsCustomerMode] = useState(isClientUrl);
+
+  // Escuchar cambios de URL para alternar modo catálogo
+  useEffect(() => {
+    const handleUrlCheck = () => {
+      setIsCustomerMode(isClientUrl());
+    };
+    window.addEventListener('popstate', handleUrlCheck);
+    return () => window.removeEventListener('popstate', handleUrlCheck);
+  }, []);
+
+  // AUTENTICACIÓN DE ADMINISTRADOR (Pantalla de login solo para el dueño)
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem('sq_admin_authenticated') === 'true';
   });
 
-  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
-  const [isCustomerPreviewMode, setIsCustomerPreviewMode] = useState(false);
-
-  // Abrir login si se accede con ?admin=1 o ?login=1
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('admin') === '1' || params.get('login') === '1') {
-        if (!isAdminAuthenticated) {
-          setIsAdminLoginOpen(true);
-        }
-      }
-    }
-  }, [isAdminAuthenticated]);
-
   const handleAdminLoginSuccess = () => {
     localStorage.setItem('sq_admin_authenticated', 'true');
     setIsAdminAuthenticated(true);
-    setIsCustomerPreviewMode(false);
-    setIsAdminLoginOpen(false);
   };
 
   const handleAdminLogout = () => {
     localStorage.removeItem('sq_admin_authenticated');
     setIsAdminAuthenticated(false);
-    setIsCustomerPreviewMode(false);
   };
 
-  // Modo Catálogo Protegido de Clientes:
-  // Es TRUE si NO está autenticado como admin O si el admin presionó "Ver como Cliente"
-  const isCustomerMode = !isAdminAuthenticated || isCustomerPreviewMode;
+  const handleGoToCatalog = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('catalogo', '1');
+    window.history.pushState({}, '', url.toString());
+    setIsCustomerMode(true);
+  };
+
+  const handleExitCustomerMode = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('catalogo');
+    url.searchParams.delete('cliente');
+    url.searchParams.delete('modo');
+    window.history.pushState({}, '', url.pathname);
+    setIsCustomerMode(false);
+  };
 
   // Escuchar evento de instalación nativa para Android Chrome
   useEffect(() => {
@@ -158,42 +181,28 @@ function AppContent() {
     <div className="min-h-screen bg-slate-50 flex flex-col antialiased selection:bg-pink-500 selection:text-white">
       
       {/* 
-        CASO 1: MODO CATÁLOGO CLIENTES (Por Defecto para cualquier visitante público)
-        Vista 100% blindada para compras públicas por WhatsApp:
+        CASO 1: MODO CATÁLOGO CLIENTES (Vía liga pública o QR con ?catalogo=1)
+        Vista 100% libre para compras por WhatsApp:
         - SIN costos
         - SIN márgenes
         - SIN botón de cobrar
-        - Pedidos directos al WhatsApp 81 2373 9027
+        - Pedidos directos a WhatsApp
       */}
       {isCustomerMode ? (
         <>
-          <CustomerCatalogHeader 
-            onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
-          />
+          <CustomerCatalogHeader />
           
           <main className="flex-1 pb-16">
             <MobilePOS isCustomerCatalogMode={true} />
 
             <footer className="py-8 text-center text-xs text-slate-400 space-y-2">
-              {isAdminAuthenticated && (
-                <div className="bg-amber-50 text-amber-900 py-1.5 px-3 rounded-full max-w-xs mx-auto border border-amber-200 text-xs font-bold inline-flex items-center gap-2">
-                  <span>Modo Vista Previa de Cliente</span>
-                  <button
-                    onClick={() => setIsCustomerPreviewMode(false)}
-                    className="underline text-pink-600 font-black"
-                  >
-                    Regresar al Panel
-                  </button>
-                </div>
-              )}
-
               <div>
                 <button
-                  onClick={() => isAdminAuthenticated ? setIsCustomerPreviewMode(false) : setIsAdminLoginOpen(true)}
+                  onClick={handleExitCustomerMode}
                   className="text-slate-400 hover:text-pink-600 font-bold inline-flex items-center gap-1.5 transition-colors"
                 >
                   <Lock className="w-3.5 h-3.5" />
-                  <span>{isAdminAuthenticated ? 'Volver al Panel de Administrador' : '¿Eres el administrador? Iniciar sesión con PIN'}</span>
+                  <span>¿Eres el administrador? Iniciar sesión</span>
                 </button>
               </div>
 
@@ -203,9 +212,17 @@ function AppContent() {
             </footer>
           </main>
         </>
+      ) : !isAdminAuthenticated ? (
+        /* 
+          CASO 2: PANTALLA COMPLETA DE LOGIN PARA EL ADMINISTRADOR (Solo para el dueño)
+        */
+        <AdminLoginPage
+          onLoginSuccess={handleAdminLoginSuccess}
+          onGoToCatalog={handleGoToCatalog}
+        />
       ) : isMobileView ? (
         /* 
-          CASO 2: EXPERIENCIA APP MÓVIL DEDICADA PARA EL ADMINISTRADOR
+          CASO 3: EXPERIENCIA APP MÓVIL DEDICADA PARA EL ADMINISTRADOR
           Desbloqueada tras iniciar sesión: Cobrar en mostrador, Compras, Pedidos, Stock
         */
         <>
@@ -318,15 +335,8 @@ function AppContent() {
         </>
       )}
 
-      {/* Modal de Login para Administradores */}
-      <AdminLoginModal
-        isOpen={isAdminLoginOpen}
-        onClose={() => setIsAdminLoginOpen(false)}
-        onLoginSuccess={handleAdminLoginSuccess}
-      />
-
       {/* Modales Compartidos de Administración */}
-      {!isCustomerMode && (
+      {!isCustomerMode && isAdminAuthenticated && (
         <>
           <ProductModal
             isOpen={isAddProductOpen}
