@@ -12,7 +12,8 @@ import {
   ChevronRight,
   Truck,
   Package,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -22,11 +23,19 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
     advanceOrderStatus, 
     completeOrder, 
     cancelOrder, 
-    whatsappNumber 
+    whatsappNumber,
+    refreshOrders
   } = useApp();
 
   const [activeFilter, setActiveFilter] = useState('activos'); // 'activos', 'nuevo', 'preparado', 'por_entregar', 'completado'
   const [searchTerm, setSearchTerm] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    if (refreshOrders) await refreshOrders();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // Modal para liquidar pedido al entregar
   const [orderToComplete, setOrderToComplete] = useState(null);
@@ -185,13 +194,24 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
           </h1>
         </div>
 
-        <button
-          onClick={onOpenOrderCapture}
-          className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 active:scale-95 transition-all flex items-center gap-1"
-        >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>+ Pedido</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 active:scale-95 transition-all flex items-center justify-center border border-slate-200"
+            title="Refrescar pedidos"
+          >
+            <RefreshCw className={`w-4 h-4 text-emerald-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
+
+          <button
+            onClick={onOpenOrderCapture}
+            className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 active:scale-95 transition-all flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>+ Pedido</span>
+          </button>
+        </div>
       </div>
 
       {/* Buscador Rápido */}
