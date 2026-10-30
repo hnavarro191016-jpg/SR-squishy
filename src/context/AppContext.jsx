@@ -363,7 +363,7 @@ export function AppProvider({ children }) {
   };
 
   // AGREGAR ARTÍCULO CON FOTOS Y STOCK
-  const addProductWithStock = ({
+  const addProductWithStock = async ({
     name,
     category = 'General',
     images = [],
@@ -388,18 +388,18 @@ export function AppProvider({ children }) {
       unitsPerBoxReference: Number(unitsPerBox) || 0
     };
 
+    const qty = Number(initialStock) || 0;
+    const locId = targetLocationId || activeLocationId || 'loc-2';
+    const key = `${locId}_${newProd.id}`;
+
+    // 1. Guardar de inmediato en estado local y LocalStorage (0 ms de espera en pantalla)
     setProducts(prev => {
       const updated = [...prev.filter(p => p.id !== newProd.id), newProd];
       try { localStorage.setItem('sq_products', JSON.stringify(updated)); } catch(e) {}
       return updated;
     });
-    syncProductToSupabase(newProd);
 
-    const qty = Number(initialStock) || 0;
     if (qty > 0) {
-      const locId = targetLocationId || activeLocationId || 'loc-2';
-      const key = `${locId}_${newProd.id}`;
-      syncInventoryKeyToSupabase(key, qty);
       setInventory(prev => {
         const updated = {
           ...prev,
@@ -408,6 +408,16 @@ export function AppProvider({ children }) {
         try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
         return updated;
       });
+    }
+
+    // 2. Sincronizar en orden estricto con Supabase: PRIMERO el producto, LUEGO el inventario
+    try {
+      await syncProductToSupabase(newProd);
+      if (qty > 0) {
+        await syncInventoryKeyToSupabase(key, qty);
+      }
+    } catch (syncErr) {
+      console.warn('Error sincronizando nuevo producto a Supabase:', syncErr);
     }
 
     return newProd;

@@ -225,20 +225,33 @@ export async function syncPurchaseToSupabase(pur) {
   }
 }
 
-export async function syncInventoryKeyToSupabase(key, quantity) {
+export async function syncInventoryKeyToSupabase(key, quantity, retries = 3) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
     const parts = key.split('_');
     const locationId = parts[0];
     const productId = parts.slice(1).join('_');
-    await supabase.from('sq_inventory').upsert({
+    const { error } = await supabase.from('sq_inventory').upsert({
       id: key,
       location_id: locationId,
       product_id: productId,
       quantity: Number(quantity) || 0,
       updated_at: new Date().toISOString()
     });
+
+    if (error) {
+      if (retries > 0) {
+        // Si falló por constraint de clave foránea porque las fotos pesadas del producto tardan en subir, reintentar
+        await new Promise(res => setTimeout(res, 600));
+        return syncInventoryKeyToSupabase(key, quantity, retries - 1);
+      }
+      console.warn('Sync inventory to Supabase error:', error);
+    }
   } catch (e) {
+    if (retries > 0) {
+      await new Promise(res => setTimeout(res, 600));
+      return syncInventoryKeyToSupabase(key, quantity, retries - 1);
+    }
     console.warn('Sync inventory to Supabase failed:', e);
   }
 }
