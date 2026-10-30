@@ -76,16 +76,40 @@ export function AppProvider({ children }) {
         const cloudData = await fetchAllFromSupabase();
         if (!cloudData || !isMounted) return;
 
-        // Productos: reflejar directamente la nube
+        // Productos: reflejar directamente la nube preservando iniciales locales
         if (cloudData.products !== null) {
-          setProducts(cloudData.products);
-          localStorage.setItem('sq_products', JSON.stringify(cloudData.products));
+          setProducts(prev => {
+            const cloudIds = new Set(cloudData.products.map(p => p.id));
+            const localOnly = prev.filter(p => !cloudIds.has(p.id));
+            const merged = cloudData.products.map(cp => {
+              const localMatch = prev.find(p => p.id === cp.id);
+              return {
+                ...cp,
+                initialStock: localMatch?.initialStock ?? cp.initialStock
+              };
+            });
+            const result = [...merged, ...localOnly];
+            try {
+              localStorage.setItem('sq_products', JSON.stringify(result));
+            } catch(e) {}
+            return result;
+          });
         }
 
-        // Inventario: reflejar directamente la nube con existencias reales
+        // Inventario: reflejar directamente la nube con existencias reales combinadas
         if (cloudData.inventory !== null) {
-          setInventory(cloudData.inventory);
-          localStorage.setItem('sq_inventory', JSON.stringify(cloudData.inventory));
+          setInventory(prev => {
+            const merged = { ...cloudData.inventory };
+            Object.keys(prev).forEach(k => {
+              if (merged[k] === undefined && typeof prev[k] === 'number') {
+                merged[k] = prev[k];
+              }
+            });
+            try {
+              localStorage.setItem('sq_inventory', JSON.stringify(merged));
+            } catch(e) {}
+            return merged;
+          });
         }
 
         // Pedidos: reflejar la nube exactamente
@@ -210,16 +234,36 @@ export function AppProvider({ children }) {
           });
         }
         if (cloudData && cloudData.inventory !== null) {
-          setInventory(cloudData.inventory);
-          try {
-            localStorage.setItem('sq_inventory', JSON.stringify(cloudData.inventory));
-          } catch(e) {}
+          setInventory(prev => {
+            const merged = { ...cloudData.inventory };
+            Object.keys(prev).forEach(k => {
+              if (merged[k] === undefined && typeof prev[k] === 'number') {
+                merged[k] = prev[k];
+              }
+            });
+            try {
+              localStorage.setItem('sq_inventory', JSON.stringify(merged));
+            } catch(e) {}
+            return merged;
+          });
         }
         if (cloudData && cloudData.products !== null) {
-          setProducts(cloudData.products);
-          try {
-            localStorage.setItem('sq_products', JSON.stringify(cloudData.products));
-          } catch(e) {}
+          setProducts(prev => {
+            const cloudIds = new Set(cloudData.products.map(p => p.id));
+            const localOnly = prev.filter(p => !cloudIds.has(p.id));
+            const merged = cloudData.products.map(cp => {
+              const localMatch = prev.find(p => p.id === cp.id);
+              return {
+                ...cp,
+                initialStock: localMatch?.initialStock ?? cp.initialStock
+              };
+            });
+            const result = [...merged, ...localOnly];
+            try {
+              localStorage.setItem('sq_products', JSON.stringify(result));
+            } catch(e) {}
+            return result;
+          });
         }
       } catch (err) {
         console.warn('Error al sincronizar pedidos de Supabase:', err);
@@ -314,8 +358,14 @@ export function AppProvider({ children }) {
       return otherKeys.reduce((sum, k) => sum + inventory[k], 0);
     }
 
-    // 3. Fallback Infalible: Compras registradas menos Ventas y Pedidos activos
     const prod = products.find(p => p.id === productId);
+
+    // 3. Stock inicial guardado en el producto
+    if (prod && typeof prod.initialStock === 'number' && prod.initialStock > 0) {
+      return prod.initialStock;
+    }
+
+    // 4. Fallback Infalible: Compras registradas menos Ventas y Pedidos activos
     if (prod) {
       const prodName = (prod.name || '').trim().toLowerCase();
 
@@ -352,14 +402,18 @@ export function AppProvider({ children }) {
   };
 
   // Ajuste rápido de existencias
-  const setQuickStock = (productId, newQuantity, locationId = activeLocationId) => {
+  const setQuickStock = async (productId, newQuantity, locationId = activeLocationId) => {
     const qty = Math.max(0, parseInt(newQuantity) || 0);
     const key = `${locationId}_${productId}`;
-    syncInventoryKeyToSupabase(key, qty);
-    setInventory(prev => ({
-      ...prev,
-      [key]: qty
-    }));
+    setInventory(prev => {
+      const updated = {
+        ...prev,
+        [key]: qty
+      };
+      try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
+      return updated;
+    });
+    await syncInventoryKeyToSupabase(key, qty);
   };
 
   // AGREGAR ARTÍCULO CON FOTOS Y STOCK
@@ -375,22 +429,24 @@ export function AppProvider({ children }) {
     boxCost = 0,
     unitsPerBox = 0
   }) => {
+    const qty = Number(initialStock) || 0;
+    const locId = targetLocationId || activeLocationId || 'loc-2';
+    const prodId = `sq-${Date.now()}`;
+    const key = `${locId}_${prodId}`;
+
     const newProd = {
-      id: `sq-${Date.now()}`,
+      id: prodId,
       name: name.trim(),
       category: category.trim() || 'General',
       images: Array.isArray(images) ? images : [],
       emoji: emoji || '',
       costPrice: Number(parseFloat(costPrice) || 0),
       salePrice: Number(parseFloat(salePrice) || 0),
+      initialStock: qty,
       minStock: 5,
       boxCostReference: Number(boxCost) || 0,
       unitsPerBoxReference: Number(unitsPerBox) || 0
     };
-
-    const qty = Number(initialStock) || 0;
-    const locId = targetLocationId || activeLocationId || 'loc-2';
-    const key = `${locId}_${newProd.id}`;
 
     // 1. Guardar de inmediato en estado local y LocalStorage (0 ms de espera en pantalla)
     setProducts(prev => {
@@ -412,7 +468,12 @@ export function AppProvider({ children }) {
 
     // 2. Sincronizar en orden estricto con Supabase: PRIMERO el producto, LUEGO el inventario
     try {
-      await syncProductToSupabase(newProd);
+      const pRes = await syncProductToSupabase(newProd);
+      if (pRes?.error) {
+        console.warn('Error en syncProductToSupabase, reintentando:', pRes.error);
+        await new Promise(r => setTimeout(r, 600));
+        await syncProductToSupabase(newProd);
+      }
       if (qty > 0) {
         await syncInventoryKeyToSupabase(key, qty);
       }
@@ -424,33 +485,52 @@ export function AppProvider({ children }) {
   };
 
   // MODIFICAR PRODUCTO
-  const updateProduct = ({ id, name, category, images, costPrice, salePrice, boxCost, unitsPerBox, newStock, locationId }) => {
-    setProducts(prev => prev.map(p => {
-      if (p.id === id) {
-        const updated = {
-          ...p,
-          name: name.trim(),
-          category: category.trim() || 'General',
-          images: Array.isArray(images) ? images : (p.images || []),
-          costPrice: Number(parseFloat(costPrice) || 0),
-          salePrice: Number(parseFloat(salePrice) || 0),
-          boxCostReference: Number(boxCost) || 0,
-          unitsPerBoxReference: Number(unitsPerBox) || 0
-        };
-        syncProductToSupabase(updated);
-        return updated;
-      }
-      return p;
-    }));
+  const updateProduct = async ({ id, name, category, images, costPrice, salePrice, boxCost, unitsPerBox, newStock, locationId }) => {
+    let updatedProd = null;
+    setProducts(prev => {
+      const updatedList = prev.map(p => {
+        if (p.id === id) {
+          updatedProd = {
+            ...p,
+            name: name.trim(),
+            category: category.trim() || 'General',
+            images: Array.isArray(images) ? images : (p.images || []),
+            costPrice: Number(parseFloat(costPrice) || 0),
+            salePrice: Number(parseFloat(salePrice) || 0),
+            boxCostReference: Number(boxCost) || 0,
+            unitsPerBoxReference: Number(unitsPerBox) || 0
+          };
+          return updatedProd;
+        }
+        return p;
+      });
+      try { localStorage.setItem('sq_products', JSON.stringify(updatedList)); } catch(e) {}
+      return updatedList;
+    });
 
     if (newStock !== undefined && locationId) {
       const key = `${locationId}_${id}`;
       const qty = Math.max(0, Number(newStock) || 0);
-      syncInventoryKeyToSupabase(key, qty);
-      setInventory(prev => ({
-        ...prev,
-        [key]: qty
-      }));
+      setInventory(prev => {
+        const updated = {
+          ...prev,
+          [key]: qty
+        };
+        try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
+        return updated;
+      });
+      try {
+        if (updatedProd) await syncProductToSupabase(updatedProd);
+        await syncInventoryKeyToSupabase(key, qty);
+      } catch (err) {
+        console.warn('Error al actualizar en Supabase:', err);
+      }
+    } else if (updatedProd) {
+      try {
+        await syncProductToSupabase(updatedProd);
+      } catch (err) {
+        console.warn('Error al actualizar producto en Supabase:', err);
+      }
     }
   };
 

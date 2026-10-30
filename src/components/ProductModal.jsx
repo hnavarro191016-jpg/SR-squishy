@@ -10,6 +10,7 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
   const [category, setCategory] = useState('');
   const [images, setImages] = useState([]);
   const [isProcessingImages, setIsProcessingImages] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [entryMode, setEntryMode] = useState('box'); // 'unit' o 'box' (por caja)
 
@@ -98,7 +99,7 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
   const profit = price - calculatedUnitCost;
   const marginPercent = price > 0 ? ((profit / price) * 100) : 0;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
       alert('Por favor ingresa el nombre del squishy');
@@ -109,36 +110,43 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
       return;
     }
 
-    if (productToEdit) {
-      // Modificar existente
-      updateProduct({
-        id: productToEdit.id,
-        name: name.trim(),
-        category: category.trim() || 'General',
-        images,
-        costPrice: calculatedUnitCost,
-        salePrice: price,
-        boxCost: entryMode === 'box' ? parseFloat(boxCost) : 0,
-        unitsPerBox: entryMode === 'box' ? parseFloat(unitsPerBox) : 0,
-        newStock: parseFloat(stock) || 0,
-        locationId: targetLocation
-      });
-    } else {
-      // Crear nuevo
-      addProductWithStock({
-        name: name.trim(),
-        category: category.trim() || 'General',
-        images,
-        costPrice: calculatedUnitCost,
-        salePrice: price,
-        initialStock: parseFloat(stock) || 0,
-        targetLocationId: targetLocation,
-        boxCost: entryMode === 'box' ? parseFloat(boxCost) : 0,
-        unitsPerBox: entryMode === 'box' ? parseFloat(unitsPerBox) : 0
-      });
+    setIsSaving(true);
+    try {
+      if (productToEdit) {
+        // Modificar existente
+        await updateProduct({
+          id: productToEdit.id,
+          name: name.trim(),
+          category: category.trim() || 'General',
+          images,
+          costPrice: calculatedUnitCost,
+          salePrice: price,
+          boxCost: entryMode === 'box' ? parseFloat(boxCost) : 0,
+          unitsPerBox: entryMode === 'box' ? parseFloat(unitsPerBox) : 0,
+          newStock: parseFloat(stock) || 0,
+          locationId: targetLocation
+        });
+      } else {
+        // Crear nuevo
+        await addProductWithStock({
+          name: name.trim(),
+          category: category.trim() || 'General',
+          images,
+          costPrice: calculatedUnitCost,
+          salePrice: price,
+          initialStock: parseFloat(stock) || 0,
+          targetLocationId: targetLocation,
+          boxCost: entryMode === 'box' ? parseFloat(boxCost) : 0,
+          unitsPerBox: entryMode === 'box' ? parseFloat(unitsPerBox) : 0
+        });
+      }
+      onClose();
+    } catch (err) {
+      console.error('Error al guardar el producto:', err);
+      alert('Hubo un problema al guardar. Intenta de nuevo.');
+    } finally {
+      setIsSaving(false);
     }
-
-    onClose();
   };
 
   const handleDelete = () => {
@@ -155,7 +163,8 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
         
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+          disabled={isSaving}
+          className="absolute right-4 top-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none"
         >
           <X className="w-5 h-5" />
         </button>
@@ -397,10 +406,20 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
           <div className="space-y-2 pt-2">
             <button
               type="submit"
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-sm shadow-lg shadow-pink-500/25 hover:from-pink-600 hover:to-rose-700 active:scale-98 transition-all flex items-center justify-center gap-2"
+              disabled={isSaving || isProcessingImages}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-sm shadow-lg shadow-pink-500/25 hover:from-pink-600 hover:to-rose-700 active:scale-98 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Check className="w-5 h-5" />
-              <span>{productToEdit ? 'GUARDAR MODIFICACIONES' : 'GUARDAR ARTÍCULO CON FOTOS'}</span>
+              {isSaving ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>GUARDANDO Y SUBIENDO A LA NUBE...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-5 h-5" />
+                  <span>{productToEdit ? 'GUARDAR MODIFICACIONES' : 'GUARDAR ARTÍCULO CON FOTOS'}</span>
+                </>
+              )}
             </button>
 
             {/* Botón Eliminar si está editando */}

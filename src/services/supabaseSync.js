@@ -118,7 +118,7 @@ export async function fetchAllFromSupabase() {
 }
 
 export async function syncProductToSupabase(p) {
-  if (!isSupabaseConfigured || !supabase) return;
+  if (!isSupabaseConfigured || !supabase) return { success: true };
   try {
     const { error } = await supabase.from('sq_products').upsert({
       id: p.id,
@@ -134,9 +134,12 @@ export async function syncProductToSupabase(p) {
     });
     if (error) {
       console.error('Error al sincronizar producto a Supabase:', error);
+      return { error };
     }
+    return { success: true };
   } catch (e) {
     console.warn('Sync product to Supabase failed:', e);
+    return { error: e };
   }
 }
 
@@ -226,7 +229,7 @@ export async function syncPurchaseToSupabase(pur) {
 }
 
 export async function syncInventoryKeyToSupabase(key, quantity, retries = 3) {
-  if (!isSupabaseConfigured || !supabase) return;
+  if (!isSupabaseConfigured || !supabase) return { success: true };
   try {
     const parts = key.split('_');
     const locationId = parts[0];
@@ -246,12 +249,15 @@ export async function syncInventoryKeyToSupabase(key, quantity, retries = 3) {
         return syncInventoryKeyToSupabase(key, quantity, retries - 1);
       }
       console.warn('Sync inventory to Supabase error:', error);
+      return { error };
     }
+    return { success: true };
   } catch (e) {
     if (retries > 0) {
       await new Promise(res => setTimeout(res, 600));
       return syncInventoryKeyToSupabase(key, quantity, retries - 1);
     }
     console.warn('Sync inventory to Supabase failed:', e);
+    return { error: e };
   }
 }
