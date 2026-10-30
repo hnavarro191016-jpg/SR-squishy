@@ -72,29 +72,29 @@ export default function Navbar({
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm pt-safe">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs pt-safe w-full">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-3">
             
-            {/* Logo y Branding Sr. Squishy */}
+            {/* Logo y Branding Sr. Squishy (Izquierda limpia) */}
             <div 
               className="flex items-center gap-2.5 cursor-pointer select-none shrink-0" 
               onClick={() => setActiveTab('pos')}
               title="Ir al Punto de Venta"
             >
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-500 via-rose-400 to-amber-300 flex items-center justify-center shadow-md shadow-pink-500/20 text-2xl transform hover:scale-105 transition-transform shrink-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-pink-500 via-rose-400 to-amber-300 flex items-center justify-center shadow-md shadow-pink-500/20 text-xl sm:text-2xl transform hover:scale-105 transition-transform shrink-0">
                 🧸
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-lg text-slate-900 tracking-tight leading-none">SquishyTrack</span>
-                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 uppercase tracking-wider">PRO</span>
+                  <span className="font-black text-base sm:text-lg text-slate-900 tracking-tight leading-none">SquishyTrack</span>
+                  <span className="text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 uppercase tracking-wider">PRO</span>
                 </div>
-                <p className="text-[11px] text-slate-500 font-medium hidden sm:block">Sr. Squishy • Control Total</p>
+                <p className="text-[11px] text-slate-400 font-medium hidden sm:block">Sr. Squishy • Control Total</p>
               </div>
             </div>
 
-            {/* Selector de Punto de Venta Activo (Desktop) */}
+            {/* Selector de Punto de Venta Activo (Desktop / Pantallas medianas) */}
             <div className="hidden md:flex items-center gap-2 bg-slate-100/90 hover:bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 transition-colors">
               <Store className="w-4 h-4 text-pink-600 shrink-0" />
               <span className="text-xs text-slate-500 font-medium">Punto:</span>
@@ -109,75 +109,33 @@ export default function Navbar({
               </select>
             </div>
 
-            {/* Barra de Acciones Principales y Botón Menú Hamburguesa */}
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Extremo Derecho: Botón rápido en desktop + Botón Menú Hamburguesa */}
+            <div className="flex items-center gap-2 shrink-0">
               
-              {/* Botón rápido: + Subir Squishy */}
+              {/* Botón Subir Squishy: Solo en pantallas medianas hacia arriba para no amontonar en móvil */}
               <button
                 onClick={onOpenAddProduct}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-md shadow-pink-500/20 hover:from-pink-600 hover:to-rose-600 transition-all hover:scale-105 active:scale-95"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-md shadow-pink-500/20 hover:from-pink-600 hover:to-rose-600 transition-all hover:scale-105 active:scale-95"
                 title="Registrar nuevo producto o squishy"
               >
                 <PlusCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">Subir Squishy</span>
+                <span>Subir Squishy</span>
               </button>
 
-              {/* Botón rápido: Punto de Venta (POS) */}
-              <button
-                onClick={() => setActiveTab('pos')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all ${
-                  activeTab === 'pos'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-700 hover:bg-pink-50 hover:text-pink-600'
-                }`}
-                title="Punto de Venta"
-              >
-                <Smartphone className="w-4 h-4 text-pink-500" />
-                <span className="hidden md:inline">Punto de Venta</span>
-                <span className="md:hidden">POS</span>
-              </button>
-
-              {/* Botón rápido: Pedidos WhatsApp con Contador */}
-              <button
-                onClick={() => setActiveTab('orders')}
-                className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all ${
-                  activeTab === 'orders'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700'
-                }`}
-                title="Pedidos recibidos por WhatsApp"
-              >
-                <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                <span className="hidden md:inline">Pedidos</span>
-                {activeOrdersCount > 0 && (
-                  <span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full animate-pulse shadow-sm">
-                    {activeOrdersCount}
-                  </span>
-                )}
-              </button>
-
-              {/* Acceso rápido a Dashboard en pantallas amplias */}
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`hidden xl:flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-sm transition-all ${
-                  activeTab === 'dashboard'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <LayoutDashboard className="w-4 h-4 text-slate-500" />
-                <span>Dashboard</span>
-              </button>
-
-              {/* BOTÓN MENÚ HAMBURGUESA PRINCIPAL */}
+              {/* BOTÓN MENÚ HAMBURGUESA PRINCIPAL (Al extremo derecho, limpio y con alerta si hay pedidos) */}
               <button
                 onClick={() => setIsMenuOpen(true)}
                 aria-label="Abrir menú de navegación"
-                className="flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl bg-slate-900 text-white font-black text-xs sm:text-sm shadow-md hover:bg-slate-800 transition-all active:scale-95 ml-1"
+                className="relative flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl bg-slate-900 text-white font-extrabold text-xs sm:text-sm shadow-md hover:bg-slate-800 transition-all active:scale-95 shrink-0 border border-slate-800"
                 title="Abrir menú de paneles y opciones"
               >
-                <Menu className="w-4 h-4 sm:w-5 sm:h-5 text-pink-400" />
-                <span className="hidden sm:inline">Menú</span>
+                <Menu className="w-5 h-5 text-pink-400 shrink-0" />
+                <span className="font-black">Menú</span>
+                {activeOrdersCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-md animate-pulse border-2 border-white">
+                    {activeOrdersCount}
+                  </span>
+                )}
               </button>
 
             </div>
@@ -403,6 +361,26 @@ export default function Navbar({
                 </p>
                 <div className="space-y-1">
                   
+                  {/* Subir Squishy (Botón destacado en menú) */}
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      onOpenAddProduct();
+                    }}
+                    className="w-full flex items-center justify-between p-2.5 rounded-xl font-bold text-xs text-pink-900 bg-pink-50 hover:bg-pink-100 border border-pink-200 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 text-white flex items-center justify-center shadow-xs">
+                        <PlusCircle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-pink-950">+ Subir Nuevo Squishy</div>
+                        <div className="text-[10px] font-normal text-pink-700">Agregar foto, precio y existencias</div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-pink-400" />
+                  </button>
+
                   {/* Compartir Catálogo a Clientes */}
                   <button
                     onClick={() => {
