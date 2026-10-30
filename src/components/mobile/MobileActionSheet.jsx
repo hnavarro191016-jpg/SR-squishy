@@ -7,7 +7,8 @@ import {
   Share2, 
   Download, 
   Sparkles,
-  Smartphone
+  Smartphone,
+  LogOut
 } from 'lucide-react';
 
 export default function MobileActionSheet({
@@ -17,7 +18,8 @@ export default function MobileActionSheet({
   onOpenAddProduct,
   onGoToPurchases,
   onOpenShareCatalog,
-  onOpenInstallGuide
+  onOpenInstallGuide,
+  onLogout
 }) {
   if (!isOpen) return null;
 
@@ -71,6 +73,16 @@ export default function MobileActionSheet({
       onClick: () => {
         onClose();
         onOpenInstallGuide();
+      }
+    },
+    {
+      title: 'Cerrar Sesión de Administrador',
+      subtitle: 'Bloquear acceso y regresar a la pantalla de login',
+      icon: LogOut,
+      gradient: 'from-rose-500 to-red-600',
+      onClick: () => {
+        onClose();
+        if (onLogout) onLogout();
       }
     }
   ];

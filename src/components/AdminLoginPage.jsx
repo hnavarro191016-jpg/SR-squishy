@@ -5,6 +5,7 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -27,18 +28,17 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
     setIsSubmitting(true);
 
     // Verificación de credenciales (admin / squishy2026 o 1234 o admin123)
-    const validUsers = ['admin', 'hugo', 'srsquishy', 'sr-squishy', 'hnavarro191016@gmail.com'];
     const validPasswords = ['squishy2026', 'admin123', '1234', 'admin', 'squishy'];
 
     setTimeout(() => {
-      // Permitir login si la contraseña coincide (o usuario admin)
+      // Permitir login si la contraseña coincide (o clave >= 4)
       if (validPasswords.includes(cleanPass) || cleanPass.length >= 4) {
-        onLoginSuccess();
+        onLoginSuccess({ rememberMe });
       } else {
         setErrorMsg('Contraseña incorrecta. (Prueba con: squishy2026 o 1234)');
         setIsSubmitting(false);
       }
-    }, 300);
+    }, 250);
   };
 
   return (
@@ -112,6 +112,19 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </div>
+
+          {/* Recordar Sesión */}
+          <div className="flex items-center justify-between pt-1">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 text-pink-600 rounded border-slate-300 focus:ring-pink-500 cursor-pointer"
+              />
+              <span className="text-xs font-medium text-slate-600">Mantener sesión iniciada</span>
+            </label>
           </div>
 
           {/* Mensaje de Error */}

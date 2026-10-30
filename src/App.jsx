@@ -72,16 +72,25 @@ function AppContent() {
   // AUTENTICACIÓN DE ADMINISTRADOR (Pantalla de login solo para el dueño)
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return localStorage.getItem('sq_admin_authenticated') === 'true';
+    return (
+      localStorage.getItem('sq_admin_logged_in') === 'true' ||
+      sessionStorage.getItem('sq_admin_logged_in') === 'true'
+    );
   });
 
-  const handleAdminLoginSuccess = () => {
-    localStorage.setItem('sq_admin_authenticated', 'true');
+  const handleAdminLoginSuccess = (options = {}) => {
+    if (options.rememberMe) {
+      localStorage.setItem('sq_admin_logged_in', 'true');
+    } else {
+      sessionStorage.setItem('sq_admin_logged_in', 'true');
+    }
     setIsAdminAuthenticated(true);
   };
 
   const handleAdminLogout = () => {
+    localStorage.removeItem('sq_admin_logged_in');
     localStorage.removeItem('sq_admin_authenticated');
+    sessionStorage.removeItem('sq_admin_logged_in');
     setIsAdminAuthenticated(false);
   };
 
@@ -278,6 +287,7 @@ function AppContent() {
             onGoToPurchases={() => setActiveTab('purchases')}
             onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
             onOpenInstallGuide={handleTriggerInstall}
+            onLogout={handleAdminLogout}
           />
 
           {/* Modal de Captura Rápida de Pedidos */}
