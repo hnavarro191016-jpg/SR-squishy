@@ -1,9 +1,7 @@
 -- ============================================================
 -- SQUISHYTRACK PRO - ESQUEMA DE BASE DE DATOS EN SUPABASE
--- Copia y pega este script en el SQL Editor de tu proyecto Supabase y presiona RUN.
 -- ============================================================
 
--- 1. Tabla de Ubicaciones / Puntos de Venta
 CREATE TABLE IF NOT EXISTS locations (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -12,14 +10,12 @@ CREATE TABLE IF NOT EXISTS locations (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Ubicaciones por defecto
 INSERT INTO locations (id, name, type, is_warehouse)
 VALUES 
   ('loc-1', 'Bodega Central', 'warehouse', true),
   ('loc-2', 'Punto de Venta Principal', 'store', false)
 ON CONFLICT (id) DO NOTHING;
 
--- 2. Tabla de Catálogo de Squishys (Productos)
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -34,16 +30,14 @@ CREATE TABLE IF NOT EXISTS products (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Tabla de Inventario Multi-Sede
 CREATE TABLE IF NOT EXISTS inventory (
-  id TEXT PRIMARY KEY, -- formato: {location_id}_{product_id}
+  id TEXT PRIMARY KEY,
   location_id TEXT REFERENCES locations(id) ON DELETE CASCADE,
   product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
   quantity INTEGER DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Tabla de Compras x Caja a Proveedores
 CREATE TABLE IF NOT EXISTS purchases (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
@@ -61,12 +55,11 @@ CREATE TABLE IF NOT EXISTS purchases (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Tabla de Pedidos (WhatsApp y Mostrador)
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY,
   folio TEXT NOT NULL,
   date TEXT NOT NULL,
-  timestamp BIGINT,
+  "timestamp" BIGINT,
   customer_name TEXT DEFAULT 'Cliente WhatsApp',
   customer_phone TEXT,
   delivery_location_id TEXT,
@@ -78,18 +71,17 @@ CREATE TABLE IF NOT EXISTS orders (
   total_cost NUMERIC(10,2) DEFAULT 0,
   total_profit NUMERIC(10,2) DEFAULT 0,
   profit_margin_percent NUMERIC(5,2) DEFAULT 0,
-  status TEXT DEFAULT 'nuevo', -- 'nuevo', 'preparado', 'por_entregar', 'completado', 'cancelado'
-  payment_status TEXT DEFAULT 'pendiente', -- 'pendiente', 'pagado'
+  status TEXT DEFAULT 'nuevo',
+  payment_status TEXT DEFAULT 'pendiente',
   payment_method TEXT DEFAULT 'Por Cobrar',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. Tabla de Ventas Cobradas (Dashboard)
 CREATE TABLE IF NOT EXISTS sales (
   id TEXT PRIMARY KEY,
   order_id TEXT,
   date TEXT NOT NULL,
-  timestamp BIGINT,
+  "timestamp" BIGINT,
   location_id TEXT,
   location_name TEXT,
   items JSONB DEFAULT '[]'::jsonb,
@@ -104,7 +96,6 @@ CREATE TABLE IF NOT EXISTS sales (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Habilitar Row Level Security (RLS) pero permitir acceso anónimo/público con anon key
 ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
@@ -112,15 +103,40 @@ ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 
--- Políticas de acceso para lectura y escritura desde la aplicación web
-CREATE POLICY "Permitir todo a usuarios anonimos en locations" ON locations FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir todo a usuarios anonimos en products" ON products FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir todo a usuarios anonimos en inventory" ON inventory FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir todo a usuarios anonimos en purchases" ON purchases FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir todo a usuarios anonimos en orders" ON orders FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Permitir todo a usuarios anonimos en sales" ON sales FOR ALL USING (true) WITH CHECK (true);
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon locations') THEN
+    CREATE POLICY "Allow anon locations" ON locations FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon products') THEN
+    CREATE POLICY "Allow anon products" ON products FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon inventory') THEN
+    CREATE POLICY "Allow anon inventory" ON inventory FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon purchases') THEN
+    CREATE POLICY "Allow anon purchases" ON purchases FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon orders') THEN
+    CREATE POLICY "Allow anon orders" ON orders FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon sales') THEN
+    CREATE POLICY "Allow anon sales" ON sales FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
--- Habilitar Realtime para pedidos e inventario (para que cualquier celular se sincronice al instante)
-ALTER PUBLICATION supabase_realtime ADD TABLE orders;
-ALTER PUBLICATION supabase_realtime ADD TABLE inventory;
-ALTER PUBLICATION supabase_realtime ADD TABLE products;
+DO $$
+BEGIN
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE orders;
+  EXCEPTION WHEN duplicate_object THEN
+  END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE inventory;
+  EXCEPTION WHEN duplicate_object THEN
+  END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE products;
+  EXCEPTION WHEN duplicate_object THEN
+  END;
+END $$;
