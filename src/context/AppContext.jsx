@@ -63,25 +63,7 @@ export function AppProvider({ children }) {
 
   const [isLoadingCloud, setIsLoadingCloud] = useState(() => Boolean(isSupabaseConfigured));
 
-  // Migración automática única para vaciar datos de prueba en el navegador del usuario conservando productos
-  const CLEAN_TEST_DATA_KEY = 'sq_test_cleaned_v2026_oct30';
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(CLEAN_TEST_DATA_KEY) !== 'true') {
-        setInventory({});
-        setOrders([]);
-        setSales([]);
-        setPurchases([]);
-        localStorage.setItem('sq_inventory', JSON.stringify({}));
-        localStorage.setItem('sq_orders', JSON.stringify([]));
-        localStorage.setItem('sq_sales', JSON.stringify([]));
-        localStorage.setItem('sq_purchases', JSON.stringify([]));
-        localStorage.setItem(CLEAN_TEST_DATA_KEY, 'true');
-      }
-    } catch (e) {}
-  }, []);
-
-  // Sincronización Inicial con Supabase (Carga de datos y migración automática)
+  // Sincronización Inicial con Supabase (Carga de datos en tiempo real)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsLoadingCloud(false);
@@ -94,13 +76,13 @@ export function AppProvider({ children }) {
         const cloudData = await fetchAllFromSupabase();
         if (!cloudData || !isMounted) return;
 
-        // Productos: se conservan
-        if (cloudData.products !== null && cloudData.products.length > 0) {
+        // Productos: reflejar directamente la nube
+        if (cloudData.products !== null) {
           setProducts(cloudData.products);
           localStorage.setItem('sq_products', JSON.stringify(cloudData.products));
         }
 
-        // Inventario: reflejar la nube (o vacío si se limpió)
+        // Inventario: reflejar directamente la nube con existencias reales
         if (cloudData.inventory !== null) {
           setInventory(cloudData.inventory);
           localStorage.setItem('sq_inventory', JSON.stringify(cloudData.inventory));
@@ -229,6 +211,15 @@ export function AppProvider({ children }) {
         }
         if (cloudData && cloudData.inventory !== null) {
           setInventory(cloudData.inventory);
+          try {
+            localStorage.setItem('sq_inventory', JSON.stringify(cloudData.inventory));
+          } catch(e) {}
+        }
+        if (cloudData && cloudData.products !== null) {
+          setProducts(cloudData.products);
+          try {
+            localStorage.setItem('sq_products', JSON.stringify(cloudData.products));
+          } catch(e) {}
         }
       } catch (err) {
         console.warn('Error al sincronizar pedidos de Supabase:', err);
@@ -397,17 +388,26 @@ export function AppProvider({ children }) {
       unitsPerBoxReference: Number(unitsPerBox) || 0
     };
 
-    setProducts(prev => [...prev, newProd]);
+    setProducts(prev => {
+      const updated = [...prev.filter(p => p.id !== newProd.id), newProd];
+      try { localStorage.setItem('sq_products', JSON.stringify(updated)); } catch(e) {}
+      return updated;
+    });
     syncProductToSupabase(newProd);
 
-    if (Number(initialStock) > 0) {
-      const key = `${targetLocationId}_${newProd.id}`;
-      const qty = Number(initialStock);
+    const qty = Number(initialStock) || 0;
+    if (qty > 0) {
+      const locId = targetLocationId || activeLocationId || 'loc-2';
+      const key = `${locId}_${newProd.id}`;
       syncInventoryKeyToSupabase(key, qty);
-      setInventory(prev => ({
-        ...prev,
-        [key]: (prev[key] || 0) + qty
-      }));
+      setInventory(prev => {
+        const updated = {
+          ...prev,
+          [key]: qty
+        };
+        try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
+        return updated;
+      });
     }
 
     return newProd;
