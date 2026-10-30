@@ -36,6 +36,30 @@ function AppContent() {
   const [isOrderCaptureOpen, setIsOrderCaptureOpen] = useState(false);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+  // Escuchar evento de instalación nativa para Android Chrome
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleTriggerInstall = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    } else {
+      setIsInstallGuideOpen(true);
+    }
+  };
 
   // Detección automática de Modo Móvil
   const checkIsMobileDevice = () => {
@@ -152,6 +176,7 @@ function AppContent() {
             onSwitchToDesktop={() => toggleViewMode('desktop')}
             activeTab={activeTab}
             onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
+            onTriggerInstall={handleTriggerInstall}
           />
 
           <main className="flex-1">
@@ -162,6 +187,7 @@ function AppContent() {
                 onEditProduct={handleOpenEdit}
                 onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
                 onOpenOrderCapture={() => setIsOrderCaptureOpen(true)}
+                onCartChange={setCartCount}
               />
             )}
             {activeTab === 'orders' && (
@@ -179,11 +205,13 @@ function AppContent() {
             )}
           </main>
 
-          {/* Barra de Navegación Inferior Móvil */}
-          <MobileBottomBar
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-          />
+          {/* Barra de Navegación Inferior Móvil: Se oculta automáticamente cuando hay productos en el carrito para dejar 100% libre el botón de Pedir y Cobrar */}
+          {!(activeTab === 'pos' && cartCount > 0) && (
+            <MobileBottomBar
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+            />
+          )}
 
           {/* Menú de Acciones Rápidas (Bottom Sheet) */}
           <MobileActionSheet
@@ -193,7 +221,7 @@ function AppContent() {
             onOpenAddProduct={handleOpenAdd}
             onGoToPurchases={() => setActiveTab('purchases')}
             onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
-            onOpenInstallGuide={() => setIsInstallGuideOpen(true)}
+            onOpenInstallGuide={handleTriggerInstall}
           />
 
           {/* Modal de Captura Rápida de Pedidos */}

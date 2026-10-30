@@ -13,7 +13,14 @@ export async function fetchAllFromSupabase() {
       supabase.from('sq_locations').select('*')
     ]);
 
-    const prods = (prodsRes.data || []).map(p => ({
+    if (prodsRes.error) console.error('Error al cargar sq_products:', prodsRes.error);
+    if (invRes.error) console.error('Error al cargar sq_inventory:', invRes.error);
+    if (ordersRes.error) console.error('Error al cargar sq_orders:', ordersRes.error);
+    if (salesRes.error) console.error('Error al cargar sq_sales:', salesRes.error);
+    if (purchasesRes.error) console.error('Error al cargar sq_purchases:', purchasesRes.error);
+    if (locsRes.error) console.error('Error al cargar sq_locations:', locsRes.error);
+
+    const prods = prodsRes.error ? null : (prodsRes.data || []).map(p => ({
       id: p.id,
       name: p.name,
       category: p.category,
@@ -26,12 +33,15 @@ export async function fetchAllFromSupabase() {
       unitsPerBoxReference: Number(p.units_per_box_reference) || 0
     }));
 
-    const inv = {};
-    (invRes.data || []).forEach(item => {
-      inv[item.id] = Number(item.quantity) || 0;
-    });
+    let inv = null;
+    if (!invRes.error && invRes.data) {
+      inv = {};
+      invRes.data.forEach(item => {
+        inv[item.id] = Number(item.quantity) || 0;
+      });
+    }
 
-    const ords = (ordersRes.data || []).map(o => ({
+    const ords = ordersRes.error ? null : (ordersRes.data || []).map(o => ({
       id: o.id,
       folio: o.folio,
       date: o.date,
@@ -52,7 +62,7 @@ export async function fetchAllFromSupabase() {
       paymentMethod: o.payment_method || 'Por Cobrar'
     }));
 
-    const sls = (salesRes.data || []).map(s => ({
+    const sls = salesRes.error ? null : (salesRes.data || []).map(s => ({
       id: s.id,
       orderId: s.order_id,
       date: s.date,
@@ -70,7 +80,7 @@ export async function fetchAllFromSupabase() {
       paymentStatus: s.payment_status || 'Completado'
     }));
 
-    const purs = (purchasesRes.data || []).map(pur => ({
+    const purs = purchasesRes.error ? null : (purchasesRes.data || []).map(pur => ({
       id: pur.id,
       date: pur.date,
       supplier: pur.supplier,
@@ -86,7 +96,7 @@ export async function fetchAllFromSupabase() {
       notes: pur.notes || ''
     }));
 
-    const locs = (locsRes.data || []).map(l => ({
+    const locs = locsRes.error ? null : (locsRes.data || []).map(l => ({
       id: l.id,
       name: l.name,
       type: l.type,
@@ -110,7 +120,7 @@ export async function fetchAllFromSupabase() {
 export async function syncProductToSupabase(p) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.from('sq_products').upsert({
+    const { error } = await supabase.from('sq_products').upsert({
       id: p.id,
       name: p.name,
       category: p.category,
@@ -122,6 +132,9 @@ export async function syncProductToSupabase(p) {
       box_cost_reference: p.boxCostReference || 0,
       units_per_box_reference: p.unitsPerBoxReference || 0
     });
+    if (error) {
+      console.error('Error al sincronizar producto a Supabase:', error);
+    }
   } catch (e) {
     console.warn('Sync product to Supabase failed:', e);
   }

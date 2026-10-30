@@ -73,7 +73,7 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
     setIsProcessingImages(true);
     try {
       const processed = await Promise.all(
-        files.map(file => compressImage(file, 800, 0.82))
+        files.map(file => compressImage(file, 640, 0.72))
       );
       setImages(prev => [...prev, ...processed]);
     } catch (err) {

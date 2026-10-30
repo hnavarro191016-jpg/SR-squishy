@@ -17,9 +17,15 @@ export default function MobileAppHeader({
   onOpenActionSheet, 
   onSwitchToDesktop,
   activeTab,
-  onOpenShareCatalog
+  onOpenShareCatalog,
+  onTriggerInstall
 }) {
   const { locations, activeLocationId, setActiveLocationId, orders } = useApp();
+
+  const isStandalone = typeof window !== 'undefined' && (
+    window.matchMedia('(display-mode: standalone)').matches || 
+    window.navigator.standalone === true
+  );
 
   const activeOrdersCount = (orders || []).filter(o => 
     ['nuevo', 'preparado', 'por_entregar'].includes(o.status)
@@ -66,6 +72,19 @@ export default function MobileAppHeader({
 
         {/* Quick Action Buttons */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Botón Instalar App (Solo visible cuando se navega dentro del navegador web para quitar la barra) */}
+          {!isStandalone && onTriggerInstall && (
+            <button
+              onClick={onTriggerInstall}
+              aria-label="Instalar como App para pantalla completa"
+              className="h-9 px-2.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 font-extrabold text-[11px] flex items-center gap-1 active:scale-95 transition-all shadow-xs"
+              title="Instalar en pantalla de inicio (Quita las barras del navegador)"
+            >
+              <span className="text-xs">📲</span>
+              <span>Instalar</span>
+            </button>
+          )}
+
           {/* Share Catalog Button */}
           {onOpenShareCatalog && (
             <button

@@ -58,44 +58,61 @@ export function AppProvider({ children }) {
     return localStorage.getItem('sq_whatsapp') || '';
   });
 
+  const [isLoadingCloud, setIsLoadingCloud] = useState(() => Boolean(isSupabaseConfigured));
+
   // Sincronización Inicial con Supabase (Carga de datos y migración automática)
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
+    if (!isSupabaseConfigured || !supabase) {
+      setIsLoadingCloud(false);
+      return;
+    }
 
     let isMounted = true;
     async function loadCloudData() {
-      const cloudData = await fetchAllFromSupabase();
-      if (!cloudData || !isMounted) return;
+      try {
+        const cloudData = await fetchAllFromSupabase();
+        if (!cloudData || !isMounted) return;
 
-      if (cloudData.products && cloudData.products.length > 0) {
-        setProducts(cloudData.products);
-      } else if (products.length > 0) {
-        // Si la nube está vacía pero localmente ya teníamos productos, migrarlos a Supabase
-        products.forEach(p => syncProductToSupabase(p));
-      }
+        if (cloudData.products !== null) {
+          if (cloudData.products.length > 0) {
+            setProducts(cloudData.products);
+          } else if (products.length > 0) {
+            // Si la nube está vacía pero localmente ya teníamos productos, migrarlos a Supabase
+            products.forEach(p => syncProductToSupabase(p));
+          }
+        }
 
-      if (cloudData.inventory && Object.keys(cloudData.inventory).length > 0) {
-        setInventory(cloudData.inventory);
-      } else if (Object.keys(inventory).length > 0) {
-        Object.entries(inventory).forEach(([k, v]) => syncInventoryKeyToSupabase(k, v));
-      }
+        if (cloudData.inventory !== null) {
+          if (Object.keys(cloudData.inventory).length > 0) {
+            setInventory(cloudData.inventory);
+          } else if (Object.keys(inventory).length > 0) {
+            Object.entries(inventory).forEach(([k, v]) => syncInventoryKeyToSupabase(k, v));
+          }
+        }
 
-      if (cloudData.orders && cloudData.orders.length > 0) {
-        setOrders(cloudData.orders);
-      } else if (orders.length > 0) {
-        orders.forEach(o => syncOrderToSupabase(o));
-      }
+        if (cloudData.orders !== null) {
+          if (cloudData.orders.length > 0) {
+            setOrders(cloudData.orders);
+          } else if (orders.length > 0) {
+            orders.forEach(o => syncOrderToSupabase(o));
+          }
+        }
 
-      if (cloudData.sales && cloudData.sales.length > 0) {
-        setSales(cloudData.sales);
-      }
+        if (cloudData.sales !== null && cloudData.sales.length > 0) {
+          setSales(cloudData.sales);
+        }
 
-      if (cloudData.purchases && cloudData.purchases.length > 0) {
-        setPurchases(cloudData.purchases);
-      }
+        if (cloudData.purchases !== null && cloudData.purchases.length > 0) {
+          setPurchases(cloudData.purchases);
+        }
 
-      if (cloudData.locations && cloudData.locations.length > 0) {
-        setLocations(cloudData.locations);
+        if (cloudData.locations !== null && cloudData.locations.length > 0) {
+          setLocations(cloudData.locations);
+        }
+      } catch (err) {
+        console.error('Error al sincronizar con la nube:', err);
+      } finally {
+        if (isMounted) setIsLoadingCloud(false);
       }
     }
 
@@ -106,15 +123,15 @@ export function AppProvider({ children }) {
       .channel('squishy_cloud_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_orders' }, async () => {
         const fresh = await fetchAllFromSupabase();
-        if (fresh?.orders && isMounted) setOrders(fresh.orders);
+        if (fresh?.orders !== null && isMounted) setOrders(fresh.orders);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_inventory' }, async () => {
         const fresh = await fetchAllFromSupabase();
-        if (fresh?.inventory && isMounted) setInventory(fresh.inventory);
+        if (fresh?.inventory !== null && isMounted) setInventory(fresh.inventory);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_products' }, async () => {
         const fresh = await fetchAllFromSupabase();
-        if (fresh?.products && isMounted) setProducts(fresh.products);
+        if (fresh?.products !== null && isMounted) setProducts(fresh.products);
       })
       .subscribe();
 
@@ -124,17 +141,27 @@ export function AppProvider({ children }) {
     };
   }, []);
 
-  // Persistencia en LocalStorage
+  // Persistencia en LocalStorage protegida contra saturación de almacenamiento
   useEffect(() => {
-    localStorage.setItem('sq_version', STORAGE_VERSION);
-    localStorage.setItem('sq_locations', JSON.stringify(locations));
-    localStorage.setItem('sq_products', JSON.stringify(products));
-    localStorage.setItem('sq_inventory', JSON.stringify(inventory));
-    localStorage.setItem('sq_purchases', JSON.stringify(purchases));
-    localStorage.setItem('sq_sales', JSON.stringify(sales));
-    localStorage.setItem('sq_orders', JSON.stringify(orders));
-    localStorage.setItem('sq_active_location', activeLocationId);
-    localStorage.setItem('sq_whatsapp', whatsappNumber);
+    try {
+      localStorage.setItem('sq_version', STORAGE_VERSION);
+      localStorage.setItem('sq_locations', JSON.stringify(locations));
+      localStorage.setItem('sq_products', JSON.stringify(products));
+      localStorage.setItem('sq_inventory', JSON.stringify(inventory));
+      localStorage.setItem('sq_purchases', JSON.stringify(purchases));
+      localStorage.setItem('sq_sales', JSON.stringify(sales));
+      localStorage.setItem('sq_orders', JSON.stringify(orders));
+      localStorage.setItem('sq_active_location', activeLocationId);
+      localStorage.setItem('sq_whatsapp', whatsappNumber);
+    } catch (err) {
+      console.warn('LocalStorage saturado por fotos en base64. Guardando respaldo ligero:', err);
+      try {
+        const lightProducts = products.map(p => ({ ...p, images: [] }));
+        localStorage.setItem('sq_products', JSON.stringify(lightProducts));
+      } catch (e) {
+        // Ignorar si el almacenamiento local del navegador está lleno
+      }
+    }
   }, [locations, products, inventory, purchases, sales, orders, activeLocationId, whatsappNumber]);
 
   // Auto-sincronización de IDs entre compras y catálogo
@@ -706,7 +733,8 @@ export function AppProvider({ children }) {
         updateProduct,
         deleteProduct,
         addProductWithStock,
-        clearAllData
+        clearAllData,
+        isLoadingCloud
       }}
     >
       {children}

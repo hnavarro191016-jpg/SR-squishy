@@ -1,6 +1,6 @@
 // Utilidad para comprimir y optimizar fotos tomadas desde celular o computadora
 // Esto evita que el almacenamiento se sature y hace que el catálogo vuele a máxima velocidad
-export function compressImage(file, maxWidth = 800, quality = 0.82) {
+export function compressImage(file, maxWidth = 640, quality = 0.72) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);

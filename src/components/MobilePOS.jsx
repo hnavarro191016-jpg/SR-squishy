@@ -104,7 +104,8 @@ export default function MobilePOS({
   isCustomerCatalogMode = false, 
   onOpenShareCatalog,
   isMobileAppMode = false,
-  onOpenOrderCapture
+  onOpenOrderCapture,
+  onCartChange
 }) {
   const { 
     locations, 
@@ -118,7 +119,8 @@ export default function MobilePOS({
     transferStock,
     deleteProduct,
     whatsappNumber,
-    setWhatsappNumber
+    setWhatsappNumber,
+    isLoadingCloud
   } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState('Todas');
@@ -148,6 +150,13 @@ export default function MobilePOS({
   const [isWhatsAppConfigOpen, setIsWhatsAppConfigOpen] = useState(false);
   const [tempWhatsApp, setTempWhatsApp] = useState(whatsappNumber || '');
   const [customerName, setCustomerName] = useState('');
+
+  // Notificar al contenedor principal cuando hay artículos en el carrito para ocultar menús
+  React.useEffect(() => {
+    if (onCartChange) {
+      onCartChange(cart.length);
+    }
+  }, [cart.length, onCartChange]);
 
   const currentLocation = locations.find(l => l.id === activeLocationId) || locations[0] || { name: 'Punto de Venta' };
 
@@ -462,8 +471,14 @@ export default function MobilePOS({
         )}
       </div>
 
-      {/* ESTADO EN BLANCO: Si no hay artículos todavía */}
-      {products.length === 0 ? (
+      {/* ESTADO DE CARGA O EN BLANCO */}
+      {isLoadingCloud && products.length === 0 ? (
+        <div className="bg-white rounded-3xl p-10 sm:p-14 text-center border border-slate-200 shadow-sm space-y-3">
+          <div className="w-10 h-10 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <h3 className="text-base font-black text-slate-800">Cargando tus squishys desde la nube...</h3>
+          <p className="text-xs text-slate-400 font-medium">Sincronizando fotos, precios y existencias en tiempo real ☁️</p>
+        </div>
+      ) : products.length === 0 ? (
         <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-pink-200 shadow-sm space-y-4">
           <div className="w-20 h-20 bg-pink-50 text-pink-500 rounded-3xl flex items-center justify-center text-4xl mx-auto shadow-inner">
             {isCustomerView ? '🧸' : '📸'}
@@ -684,62 +699,70 @@ export default function MobilePOS({
         </div>
       )}
 
-      {/* BARRA FLOTANTE DE CARRITO */}
+      {/* BARRA FLOTANTE DE CARRITO: Se coloca en bottom-0 ocupando todo el ancho sin estorbar */}
       {cart.length > 0 && (
-        <div className={`fixed ${isMobileAppMode ? 'bottom-[62px] sm:bottom-0' : 'bottom-0'} left-0 right-0 p-3 sm:p-4 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-2xl z-40`}>
-          <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+        <div className="fixed bottom-0 left-0 right-0 p-3 sm:p-4 bg-white/98 backdrop-blur-md border-t border-slate-200 shadow-2xl z-40 pb-safe animate-in slide-in-from-bottom duration-200">
+          <div className="max-w-4xl mx-auto space-y-2 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-3">
             
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-500 text-white flex items-center justify-center shadow-lg shadow-pink-500/30">
-                  <ShoppingBag className="w-6 h-6" />
-                </div>
-                <span className="absolute -top-1 -right-1 bg-slate-900 text-white font-extrabold text-xs w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">
-                  {cartTotals.totalItems}
-                </span>
-              </div>
-
-              <div>
-                <div className="text-xl sm:text-2xl font-black text-slate-900">
-                  ${cartTotals.totalAmount.toFixed(2)}
-                </div>
-                {!isCustomerView && (
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    <span>Ganancia: +${cartTotals.totalProfit.toFixed(2)} ({cartTotals.profitMargin.toFixed(0)}%)</span>
+            {/* Fila 1: Resumen de Artículos, Total y Botón Vaciar */}
+            <div className="flex items-center justify-between sm:justify-start gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="relative">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-500 text-white flex items-center justify-center shadow-md shadow-pink-500/30">
+                    <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
-                )}
-              </div>
-            </div>
+                  <span className="absolute -top-1 -right-1 bg-slate-900 text-white font-black text-[10px] sm:text-xs w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center border-2 border-white">
+                    {cartTotals.totalItems}
+                  </span>
+                </div>
 
-            <div className="flex items-center gap-2">
+                <div>
+                  <div className="text-lg sm:text-2xl font-black text-slate-900 leading-tight">
+                    ${cartTotals.totalAmount.toFixed(2)}
+                  </div>
+                  {!isCustomerView && (
+                    <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-emerald-600">
+                      <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      <span>Ganancia: +${cartTotals.totalProfit.toFixed(0)} ({cartTotals.profitMargin.toFixed(0)}%)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Botón Vaciar */}
               <button
+                type="button"
                 onClick={() => setCart([])}
                 title="Vaciar carrito"
-                className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                className="px-2.5 py-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-1 text-xs font-bold"
               >
-                <Trash2 className="w-5 h-5" />
+                <Trash2 className="w-4 h-4" />
+                <span className="sm:hidden">Vaciar</span>
               </button>
+            </div>
 
+            {/* Fila 2: Botones de Acción Grandes y Fáciles de Tocar */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               {/* Botón Pedido por WhatsApp */}
               <button
+                type="button"
                 onClick={handleSendWhatsAppOrder}
-                className="px-4 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-sm shadow-lg shadow-emerald-500/25 active:scale-95 transition-all flex items-center gap-1.5"
+                className="flex-1 sm:flex-none px-4 py-3 sm:py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs sm:text-sm shadow-md shadow-emerald-500/25 active:scale-95 transition-all flex items-center justify-center gap-1.5"
                 title="Mandar pedido directo a WhatsApp"
               >
-                <MessageCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">Pedir por WhatsApp</span>
-                <span className="sm:hidden">WhatsApp</span>
+                <MessageCircle className="w-4 h-4 shrink-0" />
+                <span>Pedir por WhatsApp</span>
               </button>
 
               {/* Botón Cobrar POS (Para Vendedor) */}
               {!isCustomerView && (
                 <button
+                  type="button"
                   onClick={() => setIsCheckoutOpen(true)}
-                  className="px-5 sm:px-7 py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 text-white font-extrabold text-base shadow-lg shadow-pink-500/30 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2"
+                  className="flex-1 sm:flex-none px-4 sm:px-7 py-3 sm:py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 text-white font-black text-xs sm:text-sm shadow-md shadow-pink-500/30 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-1.5"
                 >
                   <span>Cobrar</span>
-                  <span className="bg-white/20 px-2 py-0.5 rounded-lg text-sm">${cartTotals.totalAmount.toFixed(2)}</span>
+                  <span className="bg-white/20 px-1.5 py-0.5 rounded-lg text-xs font-black">${cartTotals.totalAmount.toFixed(0)}</span>
                 </button>
               )}
             </div>
