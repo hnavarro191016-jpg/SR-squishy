@@ -109,6 +109,15 @@ function AppContent() {
 
   const [isCustomerMode, setIsCustomerMode] = useState(isClientUrl);
 
+  // Título de la pestaña dinámico según modo
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = isCustomerMode 
+        ? 'Catálogo Oficial de Squishys 🧸' 
+        : 'SquishyTrack Pro — App Móvil & Control de Márgenes';
+    }
+  }, [isCustomerMode]);
+
   useEffect(() => {
     const handleUrlCheck = () => {
       setIsCustomerMode(isClientUrl());
