@@ -5,7 +5,12 @@ import { useApp } from '../context/AppContext';
 export default function ShareCatalogModal({ isOpen, onClose }) {
   const { whatsappNumber } = useApp();
   const [copied, setCopied] = useState(false);
-  const [catalogUrl, setCatalogUrl] = useState('');
+  const [catalogUrl, setCatalogUrl] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}/?catalogo=1`;
+    }
+    return 'https://sr-squishy-new.vercel.app/?catalogo=1';
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

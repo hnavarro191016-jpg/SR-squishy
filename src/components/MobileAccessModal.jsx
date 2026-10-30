@@ -3,7 +3,12 @@ import { Smartphone, Wifi, QrCode, Copy, Check, X, Sparkles } from 'lucide-react
 
 export default function MobileAccessModal({ isOpen, onClose }) {
   const [copied, setCopied] = useState(false);
-  const [hostUrl, setHostUrl] = useState('');
+  const [hostUrl, setHostUrl] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.origin;
+    }
+    return 'https://sr-squishy-new.vercel.app';
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
