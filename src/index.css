@@ -34,12 +34,18 @@ html, body {
   transition: transform 0.1s ease;
 }
 
-/* Safe area insets for mobile devices */
+/* Safe area insets for mobile devices (Notch, Dynamic Island, Android Status Bar Clock) */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 1rem);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
 }
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0.5rem);
+  padding-top: max(env(safe-area-inset-top, 0px), 2.75rem);
+}
+
+@media (min-width: 640px) {
+  .pt-safe {
+    padding-top: 0;
+  }
 }
 
 /* Hide scrollbars for carousel / mobile chip bars */

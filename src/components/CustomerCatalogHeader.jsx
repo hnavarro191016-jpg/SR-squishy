@@ -13,7 +13,7 @@ export default function CustomerCatalogHeader({ onOpenAdminLogin }) {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-pink-100 shadow-sm">
+    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-pink-100 shadow-sm pt-safe">
       <div className="max-w-4xl mx-auto px-4 py-3 sm:py-3.5 flex items-center justify-between">
         
         {/* Logo de la Tienda de Squishys */}
