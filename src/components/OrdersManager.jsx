@@ -84,21 +84,49 @@ export default function OrdersManager() {
     }
   };
 
-  // Detectar cuando llega un pedido nuevo mientras la pantalla está abierta
-  const prevOrdersCountRef = React.useRef(orders.length);
+  // Registro de pedidos ya conocidos para que el sonido suene UNA SOLA VEZ al llegar
+  const knownOrderIdsRef = React.useRef(new Set(orders.map(o => o.id)));
+  const isInitialMount = React.useRef(true);
+
+  // Detectar cuando llega un pedido auténticamente NUEVO mientras la pantalla está abierta
   React.useEffect(() => {
-    if (orders.length > prevOrdersCountRef.current) {
-      const newest = orders[0];
-      if (newest) {
-        setNewOrderAlert(newest);
-        playOrderDing();
-        // Ocultar la alerta automáticamente tras 10 segundos
-        const timer = setTimeout(() => setNewOrderAlert(null), 10000);
-        return () => clearTimeout(timer);
+    if (isInitialMount.current) {
+      // Al abrir la pantalla, marcar todos los pedidos existentes como conocidos (no sonar por pedidos viejos)
+      orders.forEach(o => knownOrderIdsRef.current.add(o.id));
+      isInitialMount.current = false;
+      return;
+    }
+
+    // Buscar pedidos recién llegados cuyo ID no conocíamos y que tengan status 'nuevo'
+    const trulyNewOrder = orders.find(o => !knownOrderIdsRef.current.has(o.id) && o.status === 'nuevo');
+    
+    // Registrar todos los IDs actuales en el Set
+    orders.forEach(o => knownOrderIdsRef.current.add(o.id));
+
+    if (trulyNewOrder) {
+      setNewOrderAlert(trulyNewOrder);
+      playOrderDing(); // Suena EXACTAMENTE UNA VEZ
+    }
+  }, [orders]);
+
+  // Si el pedido alertado ya fue cobrado, empacado o avanzado de estado, quitar el globo de inmediato
+  React.useEffect(() => {
+    if (newOrderAlert) {
+      const matching = orders.find(o => o.id === newOrderAlert.id);
+      if (!matching || matching.status !== 'nuevo') {
+        setNewOrderAlert(null);
       }
     }
-    prevOrdersCountRef.current = orders.length;
-  }, [orders]);
+  }, [orders, newOrderAlert]);
+
+  // Temporizador para desvanecer el globo tras 7 segundos (no se interrumpe por el auto-refresh)
+  React.useEffect(() => {
+    if (!newOrderAlert) return;
+    const timer = setTimeout(() => {
+      setNewOrderAlert(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [newOrderAlert]);
 
   // Función de refresco manual o automático
   const handleTriggerRefresh = async (isManual = false) => {
@@ -237,6 +265,10 @@ export default function OrdersManager() {
 
     if (sendReceiptOnComplete) {
       sendWhatsAppReceipt(orderData, paymentMethod, cash);
+    }
+
+    if (newOrderAlert && newOrderAlert.id === selectedOrderForPayment.id) {
+      setNewOrderAlert(null);
     }
 
     setReceiptNoticeOrder(orderData);

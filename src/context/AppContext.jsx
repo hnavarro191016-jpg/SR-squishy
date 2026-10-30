@@ -167,6 +167,23 @@ export function AppProvider({ children }) {
     }
   }, [locations, products, inventory, purchases, sales, orders, activeLocationId, whatsappNumber]);
 
+  // Helper para comparar listas de pedidos y evitar re-renders innecesarios
+  const areOrdersEqual = (listA, listB) => {
+    if (!listA || !listB) return listA === listB;
+    if (listA.length !== listB.length) return false;
+    for (let i = 0; i < listA.length; i++) {
+      if (
+        listA[i].id !== listB[i].id || 
+        listA[i].status !== listB[i].status || 
+        listA[i].paymentStatus !== listB[i].paymentStatus ||
+        listA[i].totalAmount !== listB[i].totalAmount
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   // FUNCIÓN UNIVERSAL DE AUTO-REFRESH Y SINCRONIZACIÓN DE PEDIDOS
   const refreshOrders = async () => {
     try {
@@ -175,13 +192,7 @@ export function AppProvider({ children }) {
       if (savedOrders) {
         const parsed = JSON.parse(savedOrders);
         if (Array.isArray(parsed)) {
-          setOrders(prev => {
-            // Comparar si hay cambios o nuevos pedidos antes de cambiar el estado
-            if (prev.length !== parsed.length || (parsed[0] && prev[0]?.id !== parsed[0]?.id)) {
-              return parsed;
-            }
-            return prev;
-          });
+          setOrders(prev => areOrdersEqual(prev, parsed) ? prev : parsed);
         }
       }
     } catch (e) {
@@ -193,10 +204,13 @@ export function AppProvider({ children }) {
       try {
         const cloudData = await fetchAllFromSupabase();
         if (cloudData && cloudData.orders !== null) {
-          setOrders(cloudData.orders);
-          try {
-            localStorage.setItem('sq_orders', JSON.stringify(cloudData.orders));
-          } catch(e) {}
+          setOrders(prev => {
+            if (areOrdersEqual(prev, cloudData.orders)) return prev;
+            try {
+              localStorage.setItem('sq_orders', JSON.stringify(cloudData.orders));
+            } catch(e) {}
+            return cloudData.orders;
+          });
         }
         if (cloudData && cloudData.inventory !== null) {
           setInventory(cloudData.inventory);
