@@ -104,15 +104,15 @@ export function AppProvider({ children }) {
     // Suscripción en Tiempo Real (Realtime WebSockets)
     const channel = supabase
       .channel('squishy_cloud_sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_orders' }, async () => {
         const fresh = await fetchAllFromSupabase();
         if (fresh?.orders && isMounted) setOrders(fresh.orders);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_inventory' }, async () => {
         const fresh = await fetchAllFromSupabase();
         if (fresh?.inventory && isMounted) setInventory(fresh.inventory);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_products' }, async () => {
         const fresh = await fetchAllFromSupabase();
         if (fresh?.products && isMounted) setProducts(fresh.products);
       })

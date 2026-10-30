@@ -5,12 +5,12 @@ export async function fetchAllFromSupabase() {
 
   try {
     const [prodsRes, invRes, ordersRes, salesRes, purchasesRes, locsRes] = await Promise.all([
-      supabase.from('products').select('*'),
-      supabase.from('inventory').select('*'),
-      supabase.from('orders').select('*').order('created_at', { ascending: false }),
-      supabase.from('sales').select('*').order('created_at', { ascending: false }),
-      supabase.from('purchases').select('*').order('created_at', { ascending: false }),
-      supabase.from('locations').select('*')
+      supabase.from('sq_products').select('*'),
+      supabase.from('sq_inventory').select('*'),
+      supabase.from('sq_orders').select('*').order('created_at', { ascending: false }),
+      supabase.from('sq_sales').select('*').order('created_at', { ascending: false }),
+      supabase.from('sq_purchases').select('*').order('created_at', { ascending: false }),
+      supabase.from('sq_locations').select('*')
     ]);
 
     const prods = (prodsRes.data || []).map(p => ({
@@ -110,7 +110,7 @@ export async function fetchAllFromSupabase() {
 export async function syncProductToSupabase(p) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.from('products').upsert({
+    await supabase.from('sq_products').upsert({
       id: p.id,
       name: p.name,
       category: p.category,
@@ -130,7 +130,7 @@ export async function syncProductToSupabase(p) {
 export async function deleteProductFromSupabase(productId) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.from('products').delete().eq('id', productId);
+    await supabase.from('sq_products').delete().eq('id', productId);
   } catch (e) {
     console.warn('Delete product from Supabase failed:', e);
   }
@@ -139,7 +139,7 @@ export async function deleteProductFromSupabase(productId) {
 export async function syncOrderToSupabase(order) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.from('orders').upsert({
+    await supabase.from('sq_orders').upsert({
       id: order.id,
       folio: order.folio,
       date: order.date,
@@ -167,7 +167,7 @@ export async function syncOrderToSupabase(order) {
 export async function syncSaleToSupabase(sale) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.from('sales').upsert({
+    await supabase.from('sq_sales').upsert({
       id: sale.id,
       order_id: sale.orderId || null,
       date: sale.date,
@@ -192,7 +192,7 @@ export async function syncSaleToSupabase(sale) {
 export async function syncPurchaseToSupabase(pur) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.from('purchases').upsert({
+    await supabase.from('sq_purchases').upsert({
       id: pur.id,
       date: pur.date,
       supplier: pur.supplier,
@@ -218,7 +218,7 @@ export async function syncInventoryKeyToSupabase(key, quantity) {
     const parts = key.split('_');
     const locationId = parts[0];
     const productId = parts.slice(1).join('_');
-    await supabase.from('inventory').upsert({
+    await supabase.from('sq_inventory').upsert({
       id: key,
       location_id: locationId,
       product_id: productId,

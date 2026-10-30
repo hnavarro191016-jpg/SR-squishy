@@ -1,8 +1,9 @@
 -- ============================================================
--- SQUISHYTRACK PRO - ESQUEMA DE BASE DE DATOS EN SUPABASE
+-- SQUISHYTRACK PRO - TABLAS CON PREFIJO SQ_ (AISLADAS)
+-- Pega este script en el SQL Editor de Supabase y presiona RUN.
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS locations (
+CREATE TABLE IF NOT EXISTS sq_locations (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT DEFAULT 'store',
@@ -10,13 +11,13 @@ CREATE TABLE IF NOT EXISTS locations (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-INSERT INTO locations (id, name, type, is_warehouse)
+INSERT INTO sq_locations (id, name, type, is_warehouse)
 VALUES 
   ('loc-1', 'Bodega Central', 'warehouse', true),
   ('loc-2', 'Punto de Venta Principal', 'store', false)
 ON CONFLICT (id) DO NOTHING;
 
-CREATE TABLE IF NOT EXISTS products (
+CREATE TABLE IF NOT EXISTS sq_products (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   category TEXT DEFAULT 'General',
@@ -30,15 +31,15 @@ CREATE TABLE IF NOT EXISTS products (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS inventory (
+CREATE TABLE IF NOT EXISTS sq_inventory (
   id TEXT PRIMARY KEY,
-  location_id TEXT REFERENCES locations(id) ON DELETE CASCADE,
-  product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
+  location_id TEXT REFERENCES sq_locations(id) ON DELETE CASCADE,
+  product_id TEXT REFERENCES sq_products(id) ON DELETE CASCADE,
   quantity INTEGER DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS purchases (
+CREATE TABLE IF NOT EXISTS sq_purchases (
   id TEXT PRIMARY KEY,
   date TEXT NOT NULL,
   supplier TEXT DEFAULT 'Proveedor Mayorista',
@@ -55,7 +56,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS orders (
+CREATE TABLE IF NOT EXISTS sq_orders (
   id TEXT PRIMARY KEY,
   folio TEXT NOT NULL,
   date TEXT NOT NULL,
@@ -77,7 +78,7 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS sales (
+CREATE TABLE IF NOT EXISTS sq_sales (
   id TEXT PRIMARY KEY,
   order_id TEXT,
   date TEXT NOT NULL,
@@ -96,47 +97,47 @@ CREATE TABLE IF NOT EXISTS sales (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
-ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sq_locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sq_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sq_inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sq_purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sq_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sq_sales ENABLE ROW LEVEL SECURITY;
 
 DO $$ 
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon locations') THEN
-    CREATE POLICY "Allow anon locations" ON locations FOR ALL USING (true) WITH CHECK (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon sq_locations') THEN
+    CREATE POLICY "Allow anon sq_locations" ON sq_locations FOR ALL USING (true) WITH CHECK (true);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon products') THEN
-    CREATE POLICY "Allow anon products" ON products FOR ALL USING (true) WITH CHECK (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon sq_products') THEN
+    CREATE POLICY "Allow anon sq_products" ON sq_products FOR ALL USING (true) WITH CHECK (true);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon inventory') THEN
-    CREATE POLICY "Allow anon inventory" ON inventory FOR ALL USING (true) WITH CHECK (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon sq_inventory') THEN
+    CREATE POLICY "Allow anon sq_inventory" ON sq_inventory FOR ALL USING (true) WITH CHECK (true);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon purchases') THEN
-    CREATE POLICY "Allow anon purchases" ON purchases FOR ALL USING (true) WITH CHECK (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon sq_purchases') THEN
+    CREATE POLICY "Allow anon sq_purchases" ON sq_purchases FOR ALL USING (true) WITH CHECK (true);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon orders') THEN
-    CREATE POLICY "Allow anon orders" ON orders FOR ALL USING (true) WITH CHECK (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon sq_orders') THEN
+    CREATE POLICY "Allow anon sq_orders" ON sq_orders FOR ALL USING (true) WITH CHECK (true);
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon sales') THEN
-    CREATE POLICY "Allow anon sales" ON sales FOR ALL USING (true) WITH CHECK (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow anon sq_sales') THEN
+    CREATE POLICY "Allow anon sq_sales" ON sq_sales FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
 
 DO $$
 BEGIN
   BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE orders;
+    ALTER PUBLICATION supabase_realtime ADD TABLE sq_orders;
   EXCEPTION WHEN duplicate_object THEN
   END;
   BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE inventory;
+    ALTER PUBLICATION supabase_realtime ADD TABLE sq_inventory;
   EXCEPTION WHEN duplicate_object THEN
   END;
   BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE products;
+    ALTER PUBLICATION supabase_realtime ADD TABLE sq_products;
   EXCEPTION WHEN duplicate_object THEN
   END;
 END $$;
