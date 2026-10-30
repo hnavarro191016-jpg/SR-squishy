@@ -63,6 +63,24 @@ export function AppProvider({ children }) {
 
   const [isLoadingCloud, setIsLoadingCloud] = useState(() => Boolean(isSupabaseConfigured));
 
+  // Migración automática única para vaciar datos de prueba en el navegador del usuario conservando productos
+  const CLEAN_TEST_DATA_KEY = 'sq_test_cleaned_v2026_oct30';
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(CLEAN_TEST_DATA_KEY) !== 'true') {
+        setInventory({});
+        setOrders([]);
+        setSales([]);
+        setPurchases([]);
+        localStorage.setItem('sq_inventory', JSON.stringify({}));
+        localStorage.setItem('sq_orders', JSON.stringify([]));
+        localStorage.setItem('sq_sales', JSON.stringify([]));
+        localStorage.setItem('sq_purchases', JSON.stringify([]));
+        localStorage.setItem(CLEAN_TEST_DATA_KEY, 'true');
+      }
+    } catch (e) {}
+  }, []);
+
   // Sincronización Inicial con Supabase (Carga de datos y migración automática)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -76,37 +94,34 @@ export function AppProvider({ children }) {
         const cloudData = await fetchAllFromSupabase();
         if (!cloudData || !isMounted) return;
 
-        if (cloudData.products !== null) {
-          if (cloudData.products.length > 0) {
-            setProducts(cloudData.products);
-          } else if (products.length > 0) {
-            // Si la nube está vacía pero localmente ya teníamos productos, migrarlos a Supabase
-            products.forEach(p => syncProductToSupabase(p));
-          }
+        // Productos: se conservan
+        if (cloudData.products !== null && cloudData.products.length > 0) {
+          setProducts(cloudData.products);
+          localStorage.setItem('sq_products', JSON.stringify(cloudData.products));
         }
 
+        // Inventario: reflejar la nube (o vacío si se limpió)
         if (cloudData.inventory !== null) {
-          if (Object.keys(cloudData.inventory).length > 0) {
-            setInventory(cloudData.inventory);
-          } else if (Object.keys(inventory).length > 0) {
-            Object.entries(inventory).forEach(([k, v]) => syncInventoryKeyToSupabase(k, v));
-          }
+          setInventory(cloudData.inventory);
+          localStorage.setItem('sq_inventory', JSON.stringify(cloudData.inventory));
         }
 
+        // Pedidos: reflejar la nube exactamente
         if (cloudData.orders !== null) {
-          if (cloudData.orders.length > 0) {
-            setOrders(cloudData.orders);
-          } else if (orders.length > 0) {
-            orders.forEach(o => syncOrderToSupabase(o));
-          }
+          setOrders(cloudData.orders);
+          localStorage.setItem('sq_orders', JSON.stringify(cloudData.orders));
         }
 
-        if (cloudData.sales !== null && cloudData.sales.length > 0) {
+        // Ventas: reflejar la nube
+        if (cloudData.sales !== null) {
           setSales(cloudData.sales);
+          localStorage.setItem('sq_sales', JSON.stringify(cloudData.sales));
         }
 
-        if (cloudData.purchases !== null && cloudData.purchases.length > 0) {
+        // Compras: reflejar la nube
+        if (cloudData.purchases !== null) {
           setPurchases(cloudData.purchases);
+          localStorage.setItem('sq_purchases', JSON.stringify(cloudData.purchases));
         }
 
         if (cloudData.locations !== null && cloudData.locations.length > 0) {
@@ -801,6 +816,31 @@ export function AppProvider({ children }) {
     return { success: true };
   };
 
+  // VACIAR DATOS DE PRUEBA CONSERVANDO PRODUCTOS Y TIENDAS
+  const clearTestDataKeepProducts = async () => {
+    setInventory({});
+    setOrders([]);
+    setSales([]);
+    setPurchases([]);
+    localStorage.setItem('sq_inventory', JSON.stringify({}));
+    localStorage.setItem('sq_orders', JSON.stringify([]));
+    localStorage.setItem('sq_sales', JSON.stringify([]));
+    localStorage.setItem('sq_purchases', JSON.stringify([]));
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await Promise.all([
+          supabase.from('sq_orders').delete().neq('id', 'dummy_keep'),
+          supabase.from('sq_inventory').delete().neq('id', 'dummy_keep'),
+          supabase.from('sq_sales').delete().neq('id', 'dummy_keep'),
+          supabase.from('sq_purchases').delete().neq('id', 'dummy_keep')
+        ]);
+      } catch (err) {
+        console.warn('Error al vaciar pruebas en Supabase:', err);
+      }
+    }
+  };
+
   // REINICIAR TODO
   const clearAllData = () => {
     setProducts([]);
@@ -841,6 +881,7 @@ export function AppProvider({ children }) {
         deleteProduct,
         addProductWithStock,
         clearAllData,
+        clearTestDataKeepProducts,
         refreshOrders,
         isLoadingCloud
       }}

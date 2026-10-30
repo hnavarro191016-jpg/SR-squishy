@@ -15,7 +15,8 @@ import {
   Share2,
   LogOut,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  RotateCcw
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -28,7 +29,16 @@ export default function Navbar({
   onSwitchToMobile,
   onLogout
 }) {
-  const { locations, activeLocationId, setActiveLocationId, clearAllData, whatsappNumber, setWhatsappNumber, orders } = useApp();
+  const { 
+    locations, 
+    activeLocationId, 
+    setActiveLocationId, 
+    clearAllData, 
+    clearTestDataKeepProducts,
+    whatsappNumber, 
+    setWhatsappNumber, 
+    orders 
+  } = useApp();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const activeOrdersCount = (orders || []).filter(o => ['nuevo', 'preparado', 'por_entregar'].includes(o.status)).length;
@@ -51,9 +61,17 @@ export default function Navbar({
   }, [isMenuOpen]);
 
   const handleClear = () => {
-    if (window.confirm('¿Quieres vaciar todos los datos y dejar el sistema completamente en blanco para tus pruebas?')) {
+    if (window.confirm('¿Quieres vaciar todos los datos (incluyendo productos) y dejar el sistema completamente en blanco?')) {
       clearAllData();
       setIsMenuOpen(false);
+    }
+  };
+
+  const handleClearKeepProducts = () => {
+    if (window.confirm('¿Quieres vaciar pedidos, existencias y ventas de prueba pero CONSERVAR todos tus productos/artículos?')) {
+      clearTestDataKeepProducts();
+      setIsMenuOpen(false);
+      alert('¡Listo! Se vaciaron pedidos, existencias y ventas. Tus productos continúan registrados listos para capturar stock.');
     }
   };
 
@@ -495,6 +513,22 @@ export default function Navbar({
                       <ChevronRight className="w-4 h-4 text-slate-300" />
                     </button>
                   )}
+
+                  {/* Limpiar Pruebas pero Conservar Productos */}
+                  <button
+                    onClick={handleClearKeepProducts}
+                    className="w-full flex items-center justify-between p-2.5 rounded-xl font-bold text-xs text-amber-800 hover:bg-amber-50 transition-colors text-left border border-amber-200/60"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+                        <RotateCcw className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div>Limpiar Pruebas</div>
+                        <div className="text-[10px] font-normal text-amber-600">Vacía pedidos y stock pero conserva productos</div>
+                      </div>
+                    </div>
+                  </button>
 
                   {/* Vaciar Todos los Datos */}
                   <button
