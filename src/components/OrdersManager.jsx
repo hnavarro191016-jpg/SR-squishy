@@ -21,7 +21,11 @@ import {
   AlertCircle,
   Search,
   LayoutList,
-  LayoutGrid
+  LayoutGrid,
+  RefreshCw,
+  Sparkles,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -35,7 +39,8 @@ export default function OrdersManager() {
     advanceOrderStatus, 
     completeOrder, 
     cancelOrder,
-    whatsappNumber
+    whatsappNumber,
+    refreshOrders
   } = useApp();
 
   const [activeTab, setActiveTab] = useState('activos'); // 'activos', 'nuevo', 'preparado', 'por_entregar', 'completado', 'cancelado', 'todos'
@@ -43,11 +48,84 @@ export default function OrdersManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedOrderId, setExpandedOrderId] = useState(null);
 
+  // Estados para Auto-refresh en tiempo real
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+  const [autoRefreshSecs, setAutoRefreshSecs] = useState(4);
+  const [newOrderAlert, setNewOrderAlert] = useState(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
   const [cashReceived, setCashReceived] = useState('');
   const [sendReceiptOnComplete, setSendReceiptOnComplete] = useState(true);
   const [receiptNoticeOrder, setReceiptNoticeOrder] = useState(null);
+
+  // Sonido sintetizado "Ding!" para avisar nuevo pedido sin requerir archivos mp3
+  const playOrderDing = () => {
+    if (!soundEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12); // A5
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.7);
+    } catch (e) {
+      // Navegadores pueden requerir primer click para reproducir
+    }
+  };
+
+  // Detectar cuando llega un pedido nuevo mientras la pantalla está abierta
+  const prevOrdersCountRef = React.useRef(orders.length);
+  React.useEffect(() => {
+    if (orders.length > prevOrdersCountRef.current) {
+      const newest = orders[0];
+      if (newest) {
+        setNewOrderAlert(newest);
+        playOrderDing();
+        // Ocultar la alerta automáticamente tras 10 segundos
+        const timer = setTimeout(() => setNewOrderAlert(null), 10000);
+        return () => clearTimeout(timer);
+      }
+    }
+    prevOrdersCountRef.current = orders.length;
+  }, [orders]);
+
+  // Función de refresco manual o automático
+  const handleTriggerRefresh = async (isManual = false) => {
+    if (isManual) setIsRefreshing(true);
+    if (refreshOrders) {
+      await refreshOrders();
+    }
+    setLastRefreshedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    if (isManual) {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
+
+  // Timer de cuenta regresiva de auto-refresco (cada 4 segundos)
+  React.useEffect(() => {
+    const ticker = setInterval(() => {
+      setAutoRefreshSecs(prev => {
+        if (prev <= 1) {
+          handleTriggerRefresh(false);
+          return 4;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(ticker);
+  }, [refreshOrders]);
 
   // Modal para captura manual de pedido
   const [isManualOrderOpen, setIsManualOrderOpen] = useState(false);
@@ -211,7 +289,38 @@ export default function OrdersManager() {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          
+          {/* Botón de Refresco y Estado de Auto-Sync Activo */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => handleTriggerRefresh(true)}
+              disabled={isRefreshing}
+              className="px-2.5 sm:px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs shadow-xs transition-all flex items-center gap-1.5 active:scale-95"
+              title={`Última sincronización: ${lastRefreshedAt}. Clic para refrescar de inmediato.`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-pink-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refrescar</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Auto {autoRefreshSecs}s</span>
+              </span>
+            </button>
+
+            {/* Toggle de sonido para alerta de nuevos pedidos */}
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={`p-2 rounded-xl border text-xs transition-all ${
+                soundEnabled 
+                  ? 'bg-pink-50 border-pink-200 text-pink-700 hover:bg-pink-100' 
+                  : 'bg-slate-100 border-slate-200 text-slate-400 hover:text-slate-600'
+              }`}
+              title={soundEnabled ? 'Aviso sonoro activado al llegar pedidos' : 'Sonido desactivado'}
+            >
+              {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
           {/* Alternador de Vista (Lista Compacta vs Tarjetas) */}
           <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 border border-slate-300/60">
             <button
@@ -249,6 +358,50 @@ export default function OrdersManager() {
           </button>
         </div>
       </div>
+
+      {/* Alerta animada cuando llega un nuevo pedido en vivo */}
+      {newOrderAlert && (
+        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-3 sm:p-3.5 rounded-2xl shadow-lg shadow-emerald-500/20 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top duration-300 border border-emerald-400/40">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-black tracking-tight truncate">
+                  ¡Nuevo Pedido Recibido! {newOrderAlert.folio}
+                </span>
+                <span className="bg-white/20 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full uppercase tracking-wider">
+                  WhatsApp
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-100 truncate">
+                {newOrderAlert.customerName} • {newOrderAlert.items?.length || 0} squishy(s) • ${newOrderAlert.totalAmount?.toFixed(2)} MXN
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => {
+                setActiveTab('nuevo');
+                setExpandedOrderId(newOrderAlert.id);
+                setNewOrderAlert(null);
+              }}
+              className="px-2.5 py-1 rounded-xl bg-white text-emerald-800 font-black text-xs hover:bg-emerald-50 transition-colors shadow-xs"
+            >
+              Ver Pedido
+            </button>
+            <button
+              onClick={() => setNewOrderAlert(null)}
+              className="p-1 text-white/80 hover:text-white rounded-lg transition-colors"
+              title="Cerrar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Franja Compacta de Métricas del Embudo (KPIs Rápidos) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

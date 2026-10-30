@@ -1,23 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Share2, Copy, Check, X, QrCode, MessageCircle, ExternalLink, ShieldCheck, Sparkles } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../context/AppContext';
 
 export default function ShareCatalogModal({ isOpen, onClose }) {
   const { whatsappNumber } = useApp();
   const [copied, setCopied] = useState(false);
-  const [catalogUrl, setCatalogUrl] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}/?catalogo=1`;
-    }
-    return 'https://sr-squishy-new.vercel.app/?catalogo=1';
-  });
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin;
-      setCatalogUrl(`${origin}/?catalogo=1`);
-    }
-  }, [isOpen]);
+  // URL Oficial y directa que funciona garantizada en todos los celulares
+  const catalogUrl = 'https://sr-squishy-new.vercel.app/?catalogo=1';
 
   if (!isOpen) return null;
 
@@ -35,8 +26,6 @@ export default function ShareCatalogModal({ isOpen, onClose }) {
 
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
-
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(catalogUrl)}&bgcolor=ffffff&color=0f172a`;
 
   return (
     <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
@@ -108,12 +97,13 @@ export default function ShareCatalogModal({ isOpen, onClose }) {
             <QrCode className="w-4 h-4 text-purple-600" />
             <span>Código QR para Clientes en Mostrador</span>
           </div>
-          <div className="p-3 bg-white rounded-xl inline-block border border-slate-200 shadow-sm mx-auto">
-            <img 
-              src={qrImageUrl} 
-              alt="Código QR Catálogo Clientes" 
-              className="w-36 h-36 rounded-lg mx-auto"
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          <div className="p-3 bg-white rounded-2xl inline-block border border-slate-200 shadow-sm mx-auto">
+            <QRCodeSVG 
+              value={catalogUrl} 
+              size={180}
+              level="M"
+              includeMargin={true}
+              className="mx-auto rounded-xl"
             />
           </div>
           <p className="text-[10px] text-slate-400 max-w-xs mx-auto">

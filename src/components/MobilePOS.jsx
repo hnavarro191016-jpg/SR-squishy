@@ -527,36 +527,6 @@ export default function MobilePOS({
                   </div>
                 )}
 
-                {/* BOTONES DE EDITAR Y ELIMINAR (Solo en Modo Vendedor) */}
-                {!isCustomerView && (
-                  <div className="absolute top-2 right-2 flex items-center gap-1 z-20">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditProduct(product);
-                      }}
-                      className="w-7 h-7 rounded-lg bg-white/90 backdrop-blur-sm text-slate-600 hover:text-pink-600 shadow-sm border border-slate-200/80 flex items-center justify-center hover:bg-white active:scale-95 transition-all"
-                      title="Modificar este squishy (fotos, precio, existencias)"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente "${product.name}"?`)) {
-                          deleteProduct(product.id);
-                        }
-                      }}
-                      className="w-7 h-7 rounded-lg bg-white/90 backdrop-blur-sm text-slate-400 hover:text-red-600 shadow-sm border border-slate-200/80 flex items-center justify-center hover:bg-white active:scale-95 transition-all"
-                      title="Eliminar este squishy"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-
                 <div>
                   {/* FOTO REAL O INICIAL */}
                   <div 
@@ -593,9 +563,41 @@ export default function MobilePOS({
 
                   {/* Info Producto */}
                   <div className="space-y-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-pink-600 block truncate">
-                      {product.category || 'General'}
-                    </span>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-pink-600 block truncate">
+                        {product.category || 'General'}
+                      </span>
+
+                      {/* BOTONES DE EDITAR Y ELIMINAR (Solo en Modo Vendedor, fuera de la foto) */}
+                      {!isCustomerView && (
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditProduct(product);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-pink-600 hover:bg-pink-50 transition-colors"
+                            title="Modificar este squishy (fotos, precio, existencias)"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente "${product.name}"?`)) {
+                                deleteProduct(product.id);
+                              }
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            title="Eliminar este squishy"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-tight line-clamp-2">
                       {product.name}
                     </h3>

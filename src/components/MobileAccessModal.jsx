@@ -1,22 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Smartphone, Wifi, QrCode, Copy, Check, X, Sparkles } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function MobileAccessModal({ isOpen, onClose }) {
   const [copied, setCopied] = useState(false);
-  const [hostUrl, setHostUrl] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
-    }
-    return 'https://sr-squishy-new.vercel.app';
-  });
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // Usar la URL actual del navegador
-      const url = window.location.origin;
-      setHostUrl(url);
-    }
-  }, [isOpen]);
+  const hostUrl = 'https://sr-squishy-new.vercel.app';
 
   if (!isOpen) return null;
 
@@ -25,10 +13,6 @@ export default function MobileAccessModal({ isOpen, onClose }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  // Generador de QR visual mediante SVG (para no depender de librerías externas)
-  // Generamos un QR funcional o imagen QR vía API de QR rápida y ligera
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(hostUrl)}&bgcolor=ffffff&color=1e1e2e`;
 
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -53,15 +37,13 @@ export default function MobileAccessModal({ isOpen, onClose }) {
         </div>
 
         {/* Código QR */}
-        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 inline-block mx-auto shadow-inner">
-          <img 
-            src={qrImageUrl} 
-            alt="Código QR para abrir en celular"
-            className="w-44 h-44 rounded-xl mx-auto"
-            onError={(e) => {
-              // Fallback si no hay internet para el QR service
-              e.currentTarget.style.display = 'none';
-            }}
+        <div className="p-4 bg-white rounded-2xl border border-slate-200 inline-block mx-auto shadow-sm">
+          <QRCodeSVG 
+            value={hostUrl} 
+            size={180}
+            level="M"
+            includeMargin={true}
+            className="mx-auto rounded-xl"
           />
           <span className="text-[11px] font-bold text-slate-500 mt-2 block">
             Apunta la cámara de tu celular aquí

@@ -167,6 +167,96 @@ export function AppProvider({ children }) {
     }
   }, [locations, products, inventory, purchases, sales, orders, activeLocationId, whatsappNumber]);
 
+  // FUNCIÓN UNIVERSAL DE AUTO-REFRESH Y SINCRONIZACIÓN DE PEDIDOS
+  const refreshOrders = async () => {
+    try {
+      // 1. Cargar pedidos desde LocalStorage (detecta pedidos hechos desde otra pestaña o modo catálogo)
+      const savedOrders = localStorage.getItem('sq_orders');
+      if (savedOrders) {
+        const parsed = JSON.parse(savedOrders);
+        if (Array.isArray(parsed)) {
+          setOrders(prev => {
+            // Comparar si hay cambios o nuevos pedidos antes de cambiar el estado
+            if (prev.length !== parsed.length || (parsed[0] && prev[0]?.id !== parsed[0]?.id)) {
+              return parsed;
+            }
+            return prev;
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Error al leer pedidos de localStorage:', e);
+    }
+
+    // 2. Si Supabase está configurado en la nube, traer los pedidos más frescos
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const cloudData = await fetchAllFromSupabase();
+        if (cloudData && cloudData.orders !== null) {
+          setOrders(cloudData.orders);
+          try {
+            localStorage.setItem('sq_orders', JSON.stringify(cloudData.orders));
+          } catch(e) {}
+        }
+        if (cloudData && cloudData.inventory !== null) {
+          setInventory(cloudData.inventory);
+        }
+      } catch (err) {
+        console.warn('Error al sincronizar pedidos de Supabase:', err);
+      }
+    }
+  };
+
+  // 1. Escuchar evento 'storage' para sincronizar pedidos entre pestañas en tiempo real (0 ms de delay)
+  useEffect(() => {
+    const handleStorageEvent = (e) => {
+      if (e.key === 'sq_orders' && e.newValue) {
+        try {
+          const freshOrders = JSON.parse(e.newValue);
+          if (Array.isArray(freshOrders)) {
+            setOrders(freshOrders);
+          }
+        } catch (err) {}
+      }
+      if (e.key === 'sq_inventory' && e.newValue) {
+        try {
+          const freshInv = JSON.parse(e.newValue);
+          if (freshInv) setInventory(freshInv);
+        } catch (err) {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorageEvent);
+    return () => window.removeEventListener('storage', handleStorageEvent);
+  }, []);
+
+  // 2. Auto-refresco inmediato al regresar a la app (ej. tras mandar WhatsApp o cambiar de pestaña)
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshOrders();
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [isSupabaseConfigured]);
+
+  // 3. Heartbeat de auto-refresco cíclico cada 4 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshOrders();
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isSupabaseConfigured]);
+
   // Auto-sincronización de IDs entre compras y catálogo
   useEffect(() => {
     if (products.length > 0 && purchases.length > 0) {
@@ -737,6 +827,7 @@ export function AppProvider({ children }) {
         deleteProduct,
         addProductWithStock,
         clearAllData,
+        refreshOrders,
         isLoadingCloud
       }}
     >
