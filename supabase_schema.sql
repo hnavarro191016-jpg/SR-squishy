@@ -1,0 +1,126 @@
+-- ============================================================
+-- SQUISHYTRACK PRO - ESQUEMA DE BASE DE DATOS EN SUPABASE
+-- Copia y pega este script en el SQL Editor de tu proyecto Supabase y presiona RUN.
+-- ============================================================
+
+-- 1. Tabla de Ubicaciones / Puntos de Venta
+CREATE TABLE IF NOT EXISTS locations (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT DEFAULT 'store',
+  is_warehouse BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Ubicaciones por defecto
+INSERT INTO locations (id, name, type, is_warehouse)
+VALUES 
+  ('loc-1', 'Bodega Central', 'warehouse', true),
+  ('loc-2', 'Punto de Venta Principal', 'store', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2. Tabla de Catálogo de Squishys (Productos)
+CREATE TABLE IF NOT EXISTS products (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  category TEXT DEFAULT 'General',
+  images TEXT[] DEFAULT '{}',
+  emoji TEXT DEFAULT '🧸',
+  cost_price NUMERIC(10,2) DEFAULT 0,
+  sale_price NUMERIC(10,2) DEFAULT 0,
+  min_stock INTEGER DEFAULT 5,
+  box_cost_reference NUMERIC(10,2) DEFAULT 0,
+  units_per_box_reference INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Tabla de Inventario Multi-Sede
+CREATE TABLE IF NOT EXISTS inventory (
+  id TEXT PRIMARY KEY, -- formato: {location_id}_{product_id}
+  location_id TEXT REFERENCES locations(id) ON DELETE CASCADE,
+  product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
+  quantity INTEGER DEFAULT 0,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Tabla de Compras x Caja a Proveedores
+CREATE TABLE IF NOT EXISTS purchases (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  supplier TEXT DEFAULT 'Proveedor Mayorista',
+  product_id TEXT,
+  product_name TEXT,
+  box_count NUMERIC(10,2) DEFAULT 1,
+  cost_per_box NUMERIC(10,2) DEFAULT 0,
+  units_per_box INTEGER DEFAULT 1,
+  shipping_cost NUMERIC(10,2) DEFAULT 0,
+  total_cost NUMERIC(10,2) DEFAULT 0,
+  total_units INTEGER DEFAULT 0,
+  calculated_unit_cost NUMERIC(10,2) DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. Tabla de Pedidos (WhatsApp y Mostrador)
+CREATE TABLE IF NOT EXISTS orders (
+  id TEXT PRIMARY KEY,
+  folio TEXT NOT NULL,
+  date TEXT NOT NULL,
+  timestamp BIGINT,
+  customer_name TEXT DEFAULT 'Cliente WhatsApp',
+  customer_phone TEXT,
+  delivery_location_id TEXT,
+  delivery_location_name TEXT,
+  delivery_type TEXT DEFAULT 'Punto de Venta',
+  delivery_notes TEXT,
+  items JSONB DEFAULT '[]'::jsonb,
+  total_amount NUMERIC(10,2) DEFAULT 0,
+  total_cost NUMERIC(10,2) DEFAULT 0,
+  total_profit NUMERIC(10,2) DEFAULT 0,
+  profit_margin_percent NUMERIC(5,2) DEFAULT 0,
+  status TEXT DEFAULT 'nuevo', -- 'nuevo', 'preparado', 'por_entregar', 'completado', 'cancelado'
+  payment_status TEXT DEFAULT 'pendiente', -- 'pendiente', 'pagado'
+  payment_method TEXT DEFAULT 'Por Cobrar',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. Tabla de Ventas Cobradas (Dashboard)
+CREATE TABLE IF NOT EXISTS sales (
+  id TEXT PRIMARY KEY,
+  order_id TEXT,
+  date TEXT NOT NULL,
+  timestamp BIGINT,
+  location_id TEXT,
+  location_name TEXT,
+  items JSONB DEFAULT '[]'::jsonb,
+  total_amount NUMERIC(10,2) DEFAULT 0,
+  total_cost NUMERIC(10,2) DEFAULT 0,
+  total_profit NUMERIC(10,2) DEFAULT 0,
+  profit_margin_percent NUMERIC(5,2) DEFAULT 0,
+  payment_method TEXT DEFAULT 'Efectivo',
+  cash_received NUMERIC(10,2) DEFAULT 0,
+  change_given NUMERIC(10,2) DEFAULT 0,
+  payment_status TEXT DEFAULT 'Completado',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Habilitar Row Level Security (RLS) pero permitir acceso anónimo/público con anon key
+ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de acceso para lectura y escritura desde la aplicación web
+CREATE POLICY "Permitir todo a usuarios anonimos en locations" ON locations FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo a usuarios anonimos en products" ON products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo a usuarios anonimos en inventory" ON inventory FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo a usuarios anonimos en purchases" ON purchases FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo a usuarios anonimos en orders" ON orders FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo a usuarios anonimos en sales" ON sales FOR ALL USING (true) WITH CHECK (true);
+
+-- Habilitar Realtime para pedidos e inventario (para que cualquier celular se sincronice al instante)
+ALTER PUBLICATION supabase_realtime ADD TABLE orders;
+ALTER PUBLICATION supabase_realtime ADD TABLE inventory;
+ALTER PUBLICATION supabase_realtime ADD TABLE products;
