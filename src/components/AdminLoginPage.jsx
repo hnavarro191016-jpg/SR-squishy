@@ -5,7 +5,6 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -33,7 +32,7 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
     setTimeout(() => {
       // Permitir login si la contraseña coincide (o clave >= 4)
       if (validPasswords.includes(cleanPass) || cleanPass.length >= 4) {
-        onLoginSuccess({ rememberMe });
+        onLoginSuccess();
       } else {
         setErrorMsg('Contraseña incorrecta. (Prueba con: squishy2026 o 1234)');
         setIsSubmitting(false);
@@ -64,7 +63,7 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
         </div>
 
         {/* Formulario */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
           
           {/* Campo Usuario */}
           <div className="space-y-1.5 text-left">
@@ -80,7 +79,10 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
                   setErrorMsg('');
                   setUsername(e.target.value);
                 }}
-                placeholder="admin"
+                placeholder="Ingresa tu usuario"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck="false"
                 className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 outline-none transition-all"
                 autoFocus
               />
@@ -101,7 +103,8 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
                   setErrorMsg('');
                   setPassword(e.target.value);
                 }}
-                placeholder="••••••••"
+                placeholder="Ingresa tu contraseña"
+                autoComplete="new-password"
                 className="w-full pl-10 pr-11 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 outline-none transition-all"
               />
               <button
@@ -114,17 +117,10 @@ export default function AdminLoginPage({ onLoginSuccess, onGoToCatalog }) {
             </div>
           </div>
 
-          {/* Recordar Sesión */}
-          <div className="flex items-center justify-between pt-1">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="w-4 h-4 text-pink-600 rounded border-slate-300 focus:ring-pink-500 cursor-pointer"
-              />
-              <span className="text-xs font-medium text-slate-600">Mantener sesión iniciada</span>
-            </label>
+          {/* Aviso de Seguridad: Sesión No Persistente */}
+          <div className="flex items-center justify-center gap-1.5 py-1 text-slate-400 text-[11px] font-medium text-center">
+            <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span>Sesión temporal protegida • Se cierra al salir de la app</span>
           </div>
 
           {/* Mensaje de Error */}

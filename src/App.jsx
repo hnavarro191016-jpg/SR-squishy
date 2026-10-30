@@ -70,27 +70,44 @@ function AppContent() {
   }, []);
 
   // AUTENTICACIÓN DE ADMINISTRADOR (Pantalla de login solo para el dueño)
+  // Las sesiones NO son permanentes: al salir o cerrar la app, se cierran en automático.
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return (
-      localStorage.getItem('sq_admin_logged_in') === 'true' ||
-      sessionStorage.getItem('sq_admin_logged_in') === 'true'
-    );
+    try {
+      // Purgar de inmediato cualquier residuo de sesión en localStorage para que nunca se quede abierta
+      localStorage.removeItem('sq_admin_logged_in');
+      localStorage.removeItem('sq_admin_authenticated');
+      // Solo mantener activa la sesión durante el uso de la pestaña actual (sessionStorage)
+      return sessionStorage.getItem('sq_admin_logged_in') === 'true';
+    } catch (e) {
+      return false;
+    }
   });
 
-  const handleAdminLoginSuccess = (options = {}) => {
-    if (options.rememberMe) {
-      localStorage.setItem('sq_admin_logged_in', 'true');
-    } else {
+  // Limpieza defensiva al montar
+  useEffect(() => {
+    try {
+      localStorage.removeItem('sq_admin_logged_in');
+      localStorage.removeItem('sq_admin_authenticated');
+    } catch (e) {}
+  }, []);
+
+  const handleAdminLoginSuccess = () => {
+    try {
+      // Solo guardar en sessionStorage (se destruye automáticamente al cerrar la pestaña o app)
       sessionStorage.setItem('sq_admin_logged_in', 'true');
-    }
+      localStorage.removeItem('sq_admin_logged_in');
+      localStorage.removeItem('sq_admin_authenticated');
+    } catch (e) {}
     setIsAdminAuthenticated(true);
   };
 
   const handleAdminLogout = () => {
-    localStorage.removeItem('sq_admin_logged_in');
-    localStorage.removeItem('sq_admin_authenticated');
-    sessionStorage.removeItem('sq_admin_logged_in');
+    try {
+      sessionStorage.removeItem('sq_admin_logged_in');
+      localStorage.removeItem('sq_admin_logged_in');
+      localStorage.removeItem('sq_admin_authenticated');
+    } catch (e) {}
     setIsAdminAuthenticated(false);
   };
 
