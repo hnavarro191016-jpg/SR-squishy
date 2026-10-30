@@ -1,16 +1,14 @@
 import React from 'react';
-import { MessageCircle, Sparkles, Store, ShieldCheck } from 'lucide-react';
+import { MessageCircle, Sparkles, Store, ShieldCheck, Lock } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
-export default function CustomerCatalogHeader() {
+export default function CustomerCatalogHeader({ onOpenAdminLogin }) {
   const { whatsappNumber } = useApp();
 
   const handleContactWhatsApp = () => {
-    const cleanNumber = (whatsappNumber || '').replace(/\D/g, '');
+    const cleanNumber = (whatsappNumber || '528123739027').replace(/\D/g, '') || '528123739027';
     const text = '🧸 ¡Hola! Estoy viendo tu catálogo de Squishys y me gustaría más información 😊';
-    const url = cleanNumber 
-      ? `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(text)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    const url = `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
 
@@ -37,16 +35,30 @@ export default function CustomerCatalogHeader() {
           </div>
         </div>
 
-        {/* Botón WhatsApp de Atención */}
-        <button
-          onClick={handleContactWhatsApp}
-          className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
-          title="Escríbenos directamente a WhatsApp"
-        >
-          <MessageCircle className="w-4 h-4 text-emerald-600" />
-          <span className="hidden sm:inline">¿Dudas? WhatsApp</span>
-          <span className="sm:hidden">WhatsApp</span>
-        </button>
+        {/* Botones de Cabecera */}
+        <div className="flex items-center gap-2">
+          {/* Botón WhatsApp de Atención */}
+          <button
+            onClick={handleContactWhatsApp}
+            className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-xs active:scale-95"
+            title="Escríbenos directamente a WhatsApp (81 2373 9027)"
+          >
+            <MessageCircle className="w-4 h-4 text-emerald-600" />
+            <span className="hidden sm:inline">WhatsApp</span>
+          </button>
+
+          {/* Acceso Administrador */}
+          {onOpenAdminLogin && (
+            <button
+              onClick={onOpenAdminLogin}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-black text-xs flex items-center gap-1.5 transition-all active:scale-95"
+              title="Acceso exclusivo para el administrador"
+            >
+              <Lock className="w-3.5 h-3.5 text-pink-600" />
+              <span>Admin</span>
+            </button>
+          )}
+        </div>
 
       </div>
     </header>

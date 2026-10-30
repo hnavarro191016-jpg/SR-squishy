@@ -19,6 +19,8 @@ const DEFAULT_LOCATIONS = [
   { id: 'loc-2', name: 'Punto de Venta Principal', type: 'store', isWarehouse: false },
 ];
 
+export const DEFAULT_WHATSAPP_NUMBER = '528123739027';
+
 export function AppProvider({ children }) {
   const [locations, setLocations] = useState(() => {
     const saved = localStorage.getItem('sq_locations');
@@ -55,7 +57,8 @@ export function AppProvider({ children }) {
   });
 
   const [whatsappNumber, setWhatsappNumber] = useState(() => {
-    return localStorage.getItem('sq_whatsapp') || '';
+    const saved = localStorage.getItem('sq_whatsapp');
+    return (saved && saved.trim().length > 5) ? saved.trim() : DEFAULT_WHATSAPP_NUMBER;
   });
 
   const [isLoadingCloud, setIsLoadingCloud] = useState(() => Boolean(isSupabaseConfigured));

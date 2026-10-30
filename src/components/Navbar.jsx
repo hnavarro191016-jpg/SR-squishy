@@ -10,7 +10,8 @@ import {
   Trash2,
   MessageCircle,
   ShoppingBag,
-  Share2
+  Share2,
+  LogOut
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -20,7 +21,8 @@ export default function Navbar({
   onOpenMobileModal, 
   onOpenAddProduct, 
   onOpenShareCatalog,
-  onSwitchToMobile
+  onSwitchToMobile,
+  onLogout
 }) {
   const { locations, activeLocationId, setActiveLocationId, clearAllData, whatsappNumber, setWhatsappNumber, orders } = useApp();
 
@@ -210,6 +212,18 @@ export default function Navbar({
               <Share2 className="w-3.5 h-3.5" />
               <span className="hidden xl:inline">Catálogo Clientes</span>
             </button>
+
+            {/* Cerrar Sesión Admin / Modo Cliente */}
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Cerrar sesión de administrador y ver cómo ven la tienda tus clientes"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-600 transition-colors ml-1"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-500" />
+                <span className="hidden xl:inline">Cerrar Sesión</span>
+              </button>
+            )}
 
             {/* Botón Vaciar Todo */}
             <button

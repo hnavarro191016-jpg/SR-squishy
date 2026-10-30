@@ -8,7 +8,8 @@ import {
   Sparkles,
   ShoppingBag,
   Package,
-  Layers
+  Layers,
+  LogOut
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isSupabaseConfigured } from '../../supabaseClient';
@@ -18,7 +19,8 @@ export default function MobileAppHeader({
   onSwitchToDesktop,
   activeTab,
   onOpenShareCatalog,
-  onTriggerInstall
+  onTriggerInstall,
+  onLogout
 }) {
   const { locations, activeLocationId, setActiveLocationId, orders } = useApp();
 
@@ -106,6 +108,18 @@ export default function MobileAppHeader({
           >
             <Monitor className="w-4 h-4" />
           </button>
+
+          {/* Botón Salir / Ver como Cliente */}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              aria-label="Cerrar sesión y ver como cliente"
+              className="w-9 h-9 rounded-xl bg-slate-100 text-slate-500 hover:text-rose-600 flex items-center justify-center active:scale-95 transition-all"
+              title="Cerrar sesión y volver al catálogo público de clientes"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Quick Action Button (FAB Trigger) */}
           <button

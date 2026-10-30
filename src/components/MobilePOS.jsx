@@ -266,12 +266,8 @@ export default function MobilePOS({
     }
   };
 
-  // ABRIR DIÁLOGO DE PEDIDO POR WHATSAPP
+  // ABRIR DIÁLOGO DE PEDIDO POR WHATSAPP (Directo a WhatsApp de la tienda 81 2373 9027)
   const handleSendWhatsAppOrder = () => {
-    if (!whatsappNumber) {
-      setIsWhatsAppConfigOpen(true);
-      return;
-    }
     setIsOrderModalOpen(true);
   };
 
@@ -318,10 +314,8 @@ export default function MobilePOS({
       message += `✨ *El stock ya quedó apartado en sistema con el folio ${order.folio}.*\n`;
       message += `¿A qué hora puedo pasar por él? ¡Muchas gracias! 😊`;
 
-      const cleanNumber = (whatsappNumber || '').replace(/\D/g, '');
-      const url = cleanNumber
-        ? `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`
-        : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+      const cleanNumber = (whatsappNumber || '528123739027').replace(/\D/g, '') || '528123739027';
+      const url = `https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 
       window.open(url, '_blank');
 

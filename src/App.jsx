@@ -11,6 +11,7 @@ import OrdersManager from './components/OrdersManager';
 import MobileAccessModal from './components/MobileAccessModal';
 import ShareCatalogModal from './components/ShareCatalogModal';
 import ProductModal from './components/ProductModal';
+import AdminLoginModal from './components/AdminLoginModal';
 
 // Componentes exclusivos de la experiencia App Móvil
 import MobileAppHeader from './components/mobile/MobileAppHeader';
@@ -22,7 +23,7 @@ import MobilePurchasesView from './components/mobile/MobilePurchasesView';
 import MobileInventoryView from './components/mobile/MobileInventoryView';
 import MobilePwaInstallModal from './components/mobile/MobilePwaInstallModal';
 
-import { Shield } from 'lucide-react';
+import { Lock, Shield } from 'lucide-react';
 
 function AppContent() {
   const { orders } = useApp();
@@ -38,6 +39,44 @@ function AppContent() {
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+  // AUTENTICACIÓN DE ADMINISTRADOR (Por defecto el visitante entra como CLIENTE)
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('sq_admin_authenticated') === 'true';
+  });
+
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [isCustomerPreviewMode, setIsCustomerPreviewMode] = useState(false);
+
+  // Abrir login si se accede con ?admin=1 o ?login=1
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('admin') === '1' || params.get('login') === '1') {
+        if (!isAdminAuthenticated) {
+          setIsAdminLoginOpen(true);
+        }
+      }
+    }
+  }, [isAdminAuthenticated]);
+
+  const handleAdminLoginSuccess = () => {
+    localStorage.setItem('sq_admin_authenticated', 'true');
+    setIsAdminAuthenticated(true);
+    setIsCustomerPreviewMode(false);
+    setIsAdminLoginOpen(false);
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('sq_admin_authenticated');
+    setIsAdminAuthenticated(false);
+    setIsCustomerPreviewMode(false);
+  };
+
+  // Modo Catálogo Protegido de Clientes:
+  // Es TRUE si NO está autenticado como admin O si el admin presionó "Ver como Cliente"
+  const isCustomerMode = !isAdminAuthenticated || isCustomerPreviewMode;
 
   // Escuchar evento de instalación nativa para Android Chrome
   useEffect(() => {
@@ -91,24 +130,6 @@ function AppContent() {
     setIsMobileView(mode === 'mobile');
   };
 
-  // Detección de Modo Catálogo para Clientes (URL ?catalogo=1 o ?cliente=1)
-  const isClientUrl = () => {
-    if (typeof window === 'undefined') return false;
-    const params = new URLSearchParams(window.location.search);
-    const cat = params.get('catalogo');
-    const cli = params.get('cliente');
-    const modo = params.get('modo');
-    const hash = (window.location.hash || '').toLowerCase();
-    return (
-      cat === '1' || cat === 'true' ||
-      cli === '1' || cli === 'true' ||
-      modo === 'catalogo' || modo === 'cliente' ||
-      hash.includes('catalogo') || hash.includes('cliente')
-    );
-  };
-
-  const [isCustomerMode, setIsCustomerMode] = useState(isClientUrl);
-
   // Título de la pestaña dinámico según modo
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -117,14 +138,6 @@ function AppContent() {
         : 'SquishyTrack Pro — App Móvil & Control de Márgenes';
     }
   }, [isCustomerMode]);
-
-  useEffect(() => {
-    const handleUrlCheck = () => {
-      setIsCustomerMode(isClientUrl());
-    };
-    window.addEventListener('popstate', handleUrlCheck);
-    return () => window.removeEventListener('popstate', handleUrlCheck);
-  }, []);
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -141,43 +154,59 @@ function AppContent() {
     setEditingProduct(null);
   };
 
-  // Salir del modo cliente y regresar al panel de control
-  const handleExitCustomerMode = () => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete('catalogo');
-    url.searchParams.delete('cliente');
-    url.searchParams.delete('modo');
-    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
-    setIsCustomerMode(false);
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col antialiased selection:bg-pink-500 selection:text-white">
       
       {/* 
-        CASO 1: MODO CATÁLOGO CLIENTES (?catalogo=1)
-        Vista 100% blindada para compras públicas por WhatsApp sin costos ni márgenes
+        CASO 1: MODO CATÁLOGO CLIENTES (Por Defecto para cualquier visitante público)
+        Vista 100% blindada para compras públicas por WhatsApp:
+        - SIN costos
+        - SIN márgenes
+        - SIN botón de cobrar
+        - Pedidos directos al WhatsApp 81 2373 9027
       */}
       {isCustomerMode ? (
         <>
-          <CustomerCatalogHeader />
+          <CustomerCatalogHeader 
+            onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
+          />
+          
           <main className="flex-1 pb-16">
             <MobilePOS isCustomerCatalogMode={true} />
-            <footer className="py-8 text-center text-xs text-slate-400">
-              <button
-                onClick={handleExitCustomerMode}
-                className="text-slate-400 hover:text-slate-600 underline font-medium inline-flex items-center gap-1.5"
-              >
-                <Shield className="w-3.5 h-3.5" />
-                <span>¿Eres el administrador? Ingresar al panel de control</span>
-              </button>
+
+            <footer className="py-8 text-center text-xs text-slate-400 space-y-2">
+              {isAdminAuthenticated && (
+                <div className="bg-amber-50 text-amber-900 py-1.5 px-3 rounded-full max-w-xs mx-auto border border-amber-200 text-xs font-bold inline-flex items-center gap-2">
+                  <span>Modo Vista Previa de Cliente</span>
+                  <button
+                    onClick={() => setIsCustomerPreviewMode(false)}
+                    className="underline text-pink-600 font-black"
+                  >
+                    Regresar al Panel
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <button
+                  onClick={() => isAdminAuthenticated ? setIsCustomerPreviewMode(false) : setIsAdminLoginOpen(true)}
+                  className="text-slate-400 hover:text-pink-600 font-bold inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>{isAdminAuthenticated ? 'Volver al Panel de Administrador' : '¿Eres el administrador? Iniciar sesión con PIN'}</span>
+                </button>
+              </div>
+
+              <p className="text-[11px] text-slate-400">
+                Atención y Pedidos por WhatsApp: <b>81 2373 9027</b>
+              </p>
             </footer>
           </main>
         </>
       ) : isMobileView ? (
         /* 
-          CASO 2: EXPERIENCIA APP MÓVIL DEDICADA
-          Diseñada para smartphone: navegación inferior, captura ágil de pedidos y compras
+          CASO 2: EXPERIENCIA APP MÓVIL DEDICADA PARA EL ADMINISTRADOR
+          Desbloqueada tras iniciar sesión: Cobrar en mostrador, Compras, Pedidos, Stock
         */
         <>
           <MobileAppHeader
@@ -186,6 +215,7 @@ function AppContent() {
             activeTab={activeTab}
             onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
             onTriggerInstall={handleTriggerInstall}
+            onLogout={handleAdminLogout}
           />
 
           <main className="flex-1">
@@ -214,7 +244,7 @@ function AppContent() {
             )}
           </main>
 
-          {/* Barra de Navegación Inferior Móvil: Se oculta automáticamente cuando hay productos en el carrito para dejar 100% libre el botón de Pedir y Cobrar */}
+          {/* Barra de Navegación Inferior Móvil: Se oculta cuando hay productos en el carrito */}
           {!(activeTab === 'pos' && cartCount > 0) && (
             <MobileBottomBar
               activeTab={activeTab}
@@ -239,7 +269,7 @@ function AppContent() {
             onClose={() => setIsOrderCaptureOpen(false)}
           />
 
-          {/* Guía de Instalación PWA (Agregar a Pantalla de Inicio) */}
+          {/* Guía de Instalación PWA */}
           <MobilePwaInstallModal
             isOpen={isInstallGuideOpen}
             onClose={() => setIsInstallGuideOpen(false)}
@@ -247,8 +277,8 @@ function AppContent() {
         </>
       ) : (
         /* 
-          CASO 3: PANEL DE ESCRITORIO COMPLETO
-          Con tablas anchas, dashboard financiero y simulador
+          CASO 3: PANEL DE ESCRITORIO PARA ADMINISTRADOR
+          Tablas anchas, dashboard financiero y simulador
         */
         <>
           <Navbar 
@@ -258,6 +288,7 @@ function AppContent() {
             onOpenAddProduct={handleOpenAdd}
             onOpenShareCatalog={() => setIsShareCatalogOpen(true)}
             onSwitchToMobile={() => toggleViewMode('mobile')}
+            onLogout={handleAdminLogout}
           />
 
           <main className="flex-1 pb-10">
@@ -286,6 +317,13 @@ function AppContent() {
           </main>
         </>
       )}
+
+      {/* Modal de Login para Administradores */}
+      <AdminLoginModal
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        onLoginSuccess={handleAdminLoginSuccess}
+      />
 
       {/* Modales Compartidos de Administración */}
       {!isCustomerMode && (
