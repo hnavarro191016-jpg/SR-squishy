@@ -22,18 +22,27 @@ function AppContent() {
   const [editingProduct, setEditingProduct] = useState(null);
 
   // Detección automática de Modo Catálogo para Clientes (URL ?catalogo=1 o ?cliente=1)
-  const [isCustomerMode, setIsCustomerMode] = useState(() => {
+  const isClientUrl = () => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search);
-    return params.get('catalogo') === '1' || params.get('cliente') === '1' || params.get('modo') === 'catalogo' || window.location.hash.includes('catalogo');
-  });
+    const cat = params.get('catalogo');
+    const cli = params.get('cliente');
+    const modo = params.get('modo');
+    const hash = (window.location.hash || '').toLowerCase();
+    return (
+      cat === '1' || cat === 'true' ||
+      cli === '1' || cli === 'true' ||
+      modo === 'catalogo' || modo === 'cliente' ||
+      hash.includes('catalogo') || hash.includes('cliente')
+    );
+  };
+
+  const [isCustomerMode, setIsCustomerMode] = useState(isClientUrl);
 
   // Escuchar cambios en la URL
   useEffect(() => {
     const handleUrlCheck = () => {
-      const params = new URLSearchParams(window.location.search);
-      const isClient = params.get('catalogo') === '1' || params.get('cliente') === '1' || params.get('modo') === 'catalogo' || window.location.hash.includes('catalogo');
-      setIsCustomerMode(isClient);
+      setIsCustomerMode(isClientUrl());
     };
 
     window.addEventListener('popstate', handleUrlCheck);

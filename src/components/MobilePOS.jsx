@@ -464,22 +464,28 @@ export default function MobilePOS({
       {products.length === 0 ? (
         <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-pink-200 shadow-sm space-y-4">
           <div className="w-20 h-20 bg-pink-50 text-pink-500 rounded-3xl flex items-center justify-center text-4xl mx-auto shadow-inner">
-            📸
+            {isCustomerView ? '🧸' : '📸'}
           </div>
           <div className="max-w-md mx-auto">
-            <h3 className="text-xl font-black text-slate-900">¡Tu catálogo está listo para fotos!</h3>
+            <h3 className="text-xl font-black text-slate-900">
+              {isCustomerView ? '¡Bienvenido a nuestro catálogo!' : '¡Tu catálogo está listo para fotos!'}
+            </h3>
             <p className="text-sm text-slate-500 mt-1">
-              Sube tus squishys con fotos reales desde tu celular o computadora. Podrás modificarlos, eliminarlos y recibir pedidos directos a tu WhatsApp.
+              {isCustomerView
+                ? 'Estamos preparando y agregando nuevos modelos de squishys. Si buscas un modelo en específico, escríbenos directamente a WhatsApp.'
+                : 'Sube tus squishys con fotos reales desde tu celular o computadora. Podrás modificarlos, eliminarlos y recibir pedidos directos a tu WhatsApp.'}
             </p>
           </div>
 
-          <button
-            onClick={onOpenAddProduct}
-            className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-sm shadow-lg shadow-pink-500/25 hover:from-pink-600 hover:to-rose-700 active:scale-95 transition-all inline-flex items-center gap-2"
-          >
-            <Camera className="w-5 h-5" />
-            <span>+ Subir Squishy con Fotos</span>
-          </button>
+          {!isCustomerView && onOpenAddProduct && (
+            <button
+              onClick={onOpenAddProduct}
+              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-sm shadow-lg shadow-pink-500/25 hover:from-pink-600 hover:to-rose-700 active:scale-95 transition-all inline-flex items-center gap-2"
+            >
+              <Camera className="w-5 h-5" />
+              <span>+ Subir Squishy con Fotos</span>
+            </button>
+          )}
         </div>
       ) : (
         /* Grid de Productos */

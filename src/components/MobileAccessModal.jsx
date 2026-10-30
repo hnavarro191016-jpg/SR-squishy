@@ -8,10 +8,10 @@ export default function MobileAccessModal({ isOpen, onClose }) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       // Usar la URL actual del navegador
-      const url = `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5173'}`;
+      const url = window.location.origin;
       setHostUrl(url);
     }
-  }, []);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

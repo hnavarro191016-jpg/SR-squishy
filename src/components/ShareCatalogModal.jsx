@@ -9,10 +9,10 @@ export default function ShareCatalogModal({ isOpen, onClose }) {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const origin = `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5173'}`;
+      const origin = window.location.origin;
       setCatalogUrl(`${origin}/?catalogo=1`);
     }
-  }, []);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
