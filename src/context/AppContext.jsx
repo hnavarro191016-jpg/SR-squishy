@@ -14,7 +14,8 @@ import {
 import {
   getCachedImagesMap,
   setCachedProductImages,
-  setCachedProductsImagesBulk
+  setCachedProductsImagesBulk,
+  deleteCachedProductImages
 } from '../utils/imageCache';
 
 const AppContext = createContext();
@@ -48,6 +49,7 @@ export function AppProvider({ children }) {
   const imagesCacheRef = useRef({});
   const loadedImageIdsRef = useRef(new Set());
   const isFetchingImagesRef = useRef(false);
+  const syncedLegacySigsRef = useRef(new Set());
 
   const [locations, setLocations] = useState(() => {
     const saved = localStorage.getItem('sq_locations');
@@ -173,7 +175,18 @@ export function AppProvider({ children }) {
             candidateImages = [];
             delete imagesCacheRef.current[cp.id];
             loadedImageIdsRef.current.delete(cp.id);
+            deleteCachedProductImages(cp.id);
           }
+        } else if (
+          !cp.imageSignature &&
+          candidateImages.length > 0 &&
+          typeof window !== 'undefined' &&
+          sessionStorage.getItem('sq_admin_logged_in') === 'true' &&
+          !syncedLegacySigsRef.current.has(cp.id)
+        ) {
+          // Si estamos en la sesión del administrador y el producto aún no tiene firma en Supabase, sincronizar la foto del administrador a la nube
+          syncedLegacySigsRef.current.add(cp.id);
+          syncProductToSupabase({ ...cp, images: candidateImages });
         }
 
         return {
@@ -596,29 +609,33 @@ export function AppProvider({ children }) {
 
   // MODIFICAR PRODUCTO
   const updateProduct = async ({ id, name, category, images, costPrice, salePrice, boxCost, unitsPerBox, newStock, locationId }) => {
-    let updatedProd = null;
-    if (Array.isArray(images) && images.length > 0) {
-      imagesCacheRef.current[id] = images;
+    const existingProd = products.find(p => p.id === id) || {};
+    const validImages = Array.isArray(images) ? images : (existingProd.images || []);
+
+    const updatedProd = {
+      ...existingProd,
+      id,
+      name: name.trim(),
+      category: category.trim() || 'General',
+      images: validImages,
+      emoji: existingProd.emoji || '🧸',
+      imageSignature: computeImagesSignature(validImages),
+      costPrice: Number(parseFloat(costPrice) || 0),
+      salePrice: Number(parseFloat(salePrice) || 0),
+      minStock: existingProd.minStock || 5,
+      boxCostReference: Number(boxCost) || 0,
+      unitsPerBoxReference: Number(unitsPerBox) || 0
+    };
+
+    pendingProductIdsRef.current.add(id);
+    if (validImages.length > 0) {
+      imagesCacheRef.current[id] = validImages;
       loadedImageIdsRef.current.add(id);
-      setCachedProductImages(id, images);
+      setCachedProductImages(id, validImages);
     }
+
     setProducts(prev => {
-      const updatedList = prev.map(p => {
-        if (p.id === id) {
-          updatedProd = {
-            ...p,
-            name: name.trim(),
-            category: category.trim() || 'General',
-            images: Array.isArray(images) ? images : (p.images || []),
-            costPrice: Number(parseFloat(costPrice) || 0),
-            salePrice: Number(parseFloat(salePrice) || 0),
-            boxCostReference: Number(boxCost) || 0,
-            unitsPerBoxReference: Number(unitsPerBox) || 0
-          };
-          return updatedProd;
-        }
-        return p;
-      });
+      const updatedList = prev.map(p => (p.id === id ? updatedProd : p));
       try {
         const light = updatedList.map(p => ({ ...p, images: [] }));
         localStorage.setItem('sq_products', JSON.stringify(light));
@@ -626,29 +643,29 @@ export function AppProvider({ children }) {
       return updatedList;
     });
 
-    if (newStock !== undefined && locationId) {
-      const key = `${locationId}_${id}`;
-      const qty = Math.max(0, Number(newStock) || 0);
-      setInventory(prev => {
-        const updated = {
-          ...prev,
-          [key]: qty
-        };
-        try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
-        return updated;
-      });
-      try {
-        if (updatedProd) await syncProductToSupabase(updatedProd);
-        await syncInventoryKeyToSupabase(key, qty);
-      } catch (err) {
-        console.warn('Error al actualizar en Supabase:', err);
-      }
-    } else if (updatedProd) {
-      try {
+    try {
+      const pRes = await syncProductToSupabase(updatedProd);
+      if (pRes?.error) {
+        await new Promise(r => setTimeout(r, 600));
         await syncProductToSupabase(updatedProd);
-      } catch (err) {
-        console.warn('Error al actualizar producto en Supabase:', err);
       }
+      if (newStock !== undefined && locationId) {
+        const key = `${locationId}_${id}`;
+        const qty = Math.max(0, Number(newStock) || 0);
+        setInventory(prev => {
+          const updated = {
+            ...prev,
+            [key]: qty
+          };
+          try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
+          return updated;
+        });
+        await syncInventoryKeyToSupabase(key, qty);
+      }
+    } catch (err) {
+      console.warn('Error al actualizar en Supabase:', err);
+    } finally {
+      pendingProductIdsRef.current.delete(id);
     }
   };
 
