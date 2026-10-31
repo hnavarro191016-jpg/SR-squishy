@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import {
   fetchAllFromSupabase,
   fetchProductImagesBatchFromSupabase,
+  computeImagesSignature,
   syncProductToSupabase,
   deleteProductFromSupabase,
   syncOrderToSupabase,
@@ -156,7 +157,7 @@ export function AppProvider({ children }) {
       const merged = cloudProducts.map(cp => {
         const localMatch = prev.find(p => p.id === cp.id);
         const cachedImgs = imagesCacheRef.current[cp.id];
-        const resolvedImages =
+        let candidateImages =
           (Array.isArray(cp.images) && cp.images.length > 0)
             ? cp.images
             : (Array.isArray(localMatch?.images) && localMatch.images.length > 0)
@@ -165,9 +166,19 @@ export function AppProvider({ children }) {
             ? cachedImgs
             : [];
 
+        // Si en la nube cambió la firma de las fotos (ej. el administrador editó las fotos del squishy), invalidar caché viejo y descargar las nuevas
+        if (cp.imageSignature && candidateImages.length > 0) {
+          const localSig = computeImagesSignature(candidateImages);
+          if (localSig !== cp.imageSignature) {
+            candidateImages = [];
+            delete imagesCacheRef.current[cp.id];
+            loadedImageIdsRef.current.delete(cp.id);
+          }
+        }
+
         return {
           ...cp,
-          images: resolvedImages,
+          images: candidateImages,
           initialStock: localMatch?.initialStock ?? cp.initialStock
         };
       });

@@ -1,5 +1,12 @@
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
+export function computeImagesSignature(images) {
+  if (!Array.isArray(images) || images.length === 0) return '0';
+  const first = images[0] || '';
+  const last = images[images.length - 1] || '';
+  return `${images.length}_${first.length}_${last.length}_${first.slice(-8)}${last.slice(-8)}`;
+}
+
 export async function fetchAllFromSupabase(includeImages = false) {
   if (!isSupabaseConfigured || !supabase) return null;
 
@@ -24,18 +31,23 @@ export async function fetchAllFromSupabase(includeImages = false) {
     if (purchasesRes.error) console.error('Error al cargar sq_purchases:', purchasesRes.error);
     if (locsRes.error) console.error('Error al cargar sq_locations:', locsRes.error);
 
-    const prods = prodsRes.error ? null : (prodsRes.data || []).map(p => ({
-      id: p.id,
-      name: p.name,
-      category: p.category,
-      images: Array.isArray(p.images) ? p.images : null,
-      emoji: p.emoji || '🧸',
-      costPrice: Number(p.cost_price) || 0,
-      salePrice: Number(p.sale_price) || 0,
-      minStock: p.min_stock || 5,
-      boxCostReference: Number(p.box_cost_reference) || 0,
-      unitsPerBoxReference: Number(p.units_per_box_reference) || 0
-    }));
+    const prods = prodsRes.error ? null : (prodsRes.data || []).map(p => {
+      const rawEmoji = p.emoji || '🧸';
+      const [cleanEmoji, imageSignature] = rawEmoji.split('|');
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        images: Array.isArray(p.images) ? p.images : null,
+        emoji: cleanEmoji || '🧸',
+        imageSignature: imageSignature || null,
+        costPrice: Number(p.cost_price) || 0,
+        salePrice: Number(p.sale_price) || 0,
+        minStock: p.min_stock || 5,
+        boxCostReference: Number(p.box_cost_reference) || 0,
+        unitsPerBoxReference: Number(p.units_per_box_reference) || 0
+      };
+    });
 
     let inv = null;
     if (!invRes.error && invRes.data) {
@@ -147,12 +159,14 @@ export async function fetchProductImagesBatchFromSupabase(productIds) {
 export async function syncProductToSupabase(p) {
   if (!isSupabaseConfigured || !supabase) return { success: true };
   try {
+    const cleanEmoji = ((p.emoji || '🧸').split('|')[0]) || '🧸';
+    const sig = computeImagesSignature(p.images || []);
     const { error } = await supabase.from('sq_products').upsert({
       id: p.id,
       name: p.name,
       category: p.category,
       images: p.images || [],
-      emoji: p.emoji || '🧸',
+      emoji: `${cleanEmoji}|${sig}`,
       cost_price: p.costPrice || 0,
       sale_price: p.salePrice || 0,
       min_stock: p.minStock || 5,

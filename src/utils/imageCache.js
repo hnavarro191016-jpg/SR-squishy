@@ -1,7 +1,7 @@
 // Caché de alta capacidad en IndexedDB para fotos de productos (soporta >500 MB sin límite de LocalStorage)
 const DB_NAME = 'SquishyImageCacheDB';
 const STORE_NAME = 'product_images';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -11,9 +11,10 @@ function openDB() {
     const request = window.indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
+      if (db.objectStoreNames.contains(STORE_NAME)) {
+        db.deleteObjectStore(STORE_NAME);
       }
+      db.createObjectStore(STORE_NAME);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
