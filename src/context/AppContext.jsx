@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import {
   fetchAllFromSupabase,
+  fetchProductImagesBatchFromSupabase,
   syncProductToSupabase,
   deleteProductFromSupabase,
   syncOrderToSupabase,
@@ -9,10 +10,27 @@ import {
   syncPurchaseToSupabase,
   syncInventoryKeyToSupabase
 } from '../services/supabaseSync';
+import {
+  getCachedImagesMap,
+  setCachedProductImages,
+  setCachedProductsImagesBulk
+} from '../utils/imageCache';
 
 const AppContext = createContext();
 
-const STORAGE_VERSION = 'v2_blank';
+const STORAGE_VERSION = 'v3_clean_cloud';
+
+function ensureCleanStorageVersion() {
+  if (typeof window === 'undefined') return;
+  try {
+    const currentVer = localStorage.getItem('sq_version');
+    if (currentVer !== STORAGE_VERSION) {
+      localStorage.removeItem('sq_products');
+      localStorage.removeItem('sq_inventory');
+      localStorage.setItem('sq_version', STORAGE_VERSION);
+    }
+  } catch (e) {}
+}
 
 const DEFAULT_LOCATIONS = [
   { id: 'loc-1', name: 'Bodega Central', type: 'warehouse', isWarehouse: true },
@@ -22,6 +40,14 @@ const DEFAULT_LOCATIONS = [
 export const DEFAULT_WHATSAPP_NUMBER = '528123739027';
 
 export function AppProvider({ children }) {
+  // Purgar caché viejo de prueba antes de inicializar estados
+  ensureCleanStorageVersion();
+
+  const pendingProductIdsRef = useRef(new Set());
+  const imagesCacheRef = useRef({});
+  const loadedImageIdsRef = useRef(new Set());
+  const isFetchingImagesRef = useRef(false);
+
   const [locations, setLocations] = useState(() => {
     const saved = localStorage.getItem('sq_locations');
     return saved ? JSON.parse(saved) : DEFAULT_LOCATIONS;
@@ -63,6 +89,116 @@ export function AppProvider({ children }) {
 
   const [isLoadingCloud, setIsLoadingCloud] = useState(() => Boolean(isSupabaseConfigured));
 
+  // Cargar fotos guardadas en IndexedDB al arrancar (instantáneo, <15ms)
+  useEffect(() => {
+    getCachedImagesMap().then(cachedMap => {
+      if (cachedMap && Object.keys(cachedMap).length > 0) {
+        imagesCacheRef.current = { ...imagesCacheRef.current, ...cachedMap };
+        Object.keys(cachedMap).forEach(id => {
+          if (Array.isArray(cachedMap[id]) && cachedMap[id].length > 0) {
+            loadedImageIdsRef.current.add(id);
+          }
+        });
+        setProducts(prev => prev.map(p => {
+          if ((!p.images || p.images.length === 0) && cachedMap[p.id]?.length > 0) {
+            return { ...p, images: cachedMap[p.id] };
+          }
+          return p;
+        }));
+      }
+    });
+  }, []);
+
+  // Descarga progresiva en lotes de 4 para las fotos que aún no están en memoria ni en IndexedDB
+  const loadMissingProductImages = async (productList) => {
+    if (isFetchingImagesRef.current || !Array.isArray(productList)) return;
+    const missingIds = productList
+      .filter(p => (!p.images || p.images.length === 0) && !loadedImageIdsRef.current.has(p.id))
+      .map(p => p.id);
+
+    if (missingIds.length === 0) return;
+    isFetchingImagesRef.current = true;
+
+    try {
+      const BATCH_SIZE = 4;
+      for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
+        const batchIds = missingIds.slice(i, i + BATCH_SIZE);
+        const batchResults = await fetchProductImagesBatchFromSupabase(batchIds);
+        batchIds.forEach(id => loadedImageIdsRef.current.add(id));
+
+        if (batchResults.length > 0) {
+          const batchMap = {};
+          batchResults.forEach(item => {
+            batchMap[item.id] = item.images || [];
+            imagesCacheRef.current[item.id] = item.images || [];
+          });
+          setCachedProductsImagesBulk(batchResults);
+
+          setProducts(prev => prev.map(p => {
+            if (batchMap[p.id] && batchMap[p.id].length > 0) {
+              return { ...p, images: batchMap[p.id] };
+            }
+            return p;
+          }));
+        }
+      }
+    } finally {
+      isFetchingImagesRef.current = false;
+    }
+  };
+
+  const applyCloudProducts = (cloudProducts) => {
+    if (!Array.isArray(cloudProducts)) return;
+    setProducts(prev => {
+      const cloudIds = new Set(cloudProducts.map(p => p.id));
+      // Solo conservar productos locales si se están subiendo en este preciso instante
+      const pendingLocal = prev.filter(p => !cloudIds.has(p.id) && pendingProductIdsRef.current.has(p.id));
+      const merged = cloudProducts.map(cp => {
+        const localMatch = prev.find(p => p.id === cp.id);
+        const cachedImgs = imagesCacheRef.current[cp.id];
+        const resolvedImages =
+          (Array.isArray(cp.images) && cp.images.length > 0)
+            ? cp.images
+            : (Array.isArray(localMatch?.images) && localMatch.images.length > 0)
+            ? localMatch.images
+            : (Array.isArray(cachedImgs) && cachedImgs.length > 0)
+            ? cachedImgs
+            : [];
+
+        return {
+          ...cp,
+          images: resolvedImages,
+          initialStock: localMatch?.initialStock ?? cp.initialStock
+        };
+      });
+      const result = [...merged, ...pendingLocal];
+      try {
+        const lightProducts = result.map(p => ({ ...p, images: [] }));
+        localStorage.setItem('sq_products', JSON.stringify(lightProducts));
+      } catch(e) {}
+      setTimeout(() => loadMissingProductImages(result), 10);
+      return result;
+    });
+  };
+
+  const applyCloudInventory = (cloudInventory) => {
+    if (!cloudInventory || typeof cloudInventory !== 'object') return;
+    setInventory(prev => {
+      const merged = { ...cloudInventory };
+      // Solo conservar llaves locales si pertenecen a un producto que sigue subiéndose
+      Object.keys(prev).forEach(k => {
+        const prodId = k.split('_').slice(1).join('_');
+        if (merged[k] === undefined && pendingProductIdsRef.current.has(prodId)) {
+          merged[k] = prev[k];
+        }
+      });
+      try {
+        localStorage.setItem('sq_inventory', JSON.stringify(merged));
+      } catch(e) {}
+      return merged;
+    });
+  };
+
   // Sincronización Inicial con Supabase (Carga de datos en tiempo real)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -73,61 +209,33 @@ export function AppProvider({ children }) {
     let isMounted = true;
     async function loadCloudData() {
       try {
-        const cloudData = await fetchAllFromSupabase();
+        const cloudData = await fetchAllFromSupabase(false);
         if (!cloudData || !isMounted) return;
 
-        // Productos: reflejar directamente la nube preservando iniciales locales
-        if (cloudData.products !== null) {
-          setProducts(prev => {
-            const cloudIds = new Set(cloudData.products.map(p => p.id));
-            const localOnly = prev.filter(p => !cloudIds.has(p.id));
-            const merged = cloudData.products.map(cp => {
-              const localMatch = prev.find(p => p.id === cp.id);
-              return {
-                ...cp,
-                initialStock: localMatch?.initialStock ?? cp.initialStock
-              };
-            });
-            const result = [...merged, ...localOnly];
-            try {
-              localStorage.setItem('sq_products', JSON.stringify(result));
-            } catch(e) {}
-            return result;
-          });
-        }
-
-        // Inventario: reflejar directamente la nube con existencias reales combinadas
+        // 1. Inventario primero (existencias exactas en <400ms)
         if (cloudData.inventory !== null) {
-          setInventory(prev => {
-            const merged = { ...cloudData.inventory };
-            Object.keys(prev).forEach(k => {
-              if (merged[k] === undefined && typeof prev[k] === 'number') {
-                merged[k] = prev[k];
-              }
-            });
-            try {
-              localStorage.setItem('sq_inventory', JSON.stringify(merged));
-            } catch(e) {}
-            return merged;
-          });
+          applyCloudInventory(cloudData.inventory);
         }
 
-        // Pedidos: reflejar la nube exactamente
+        // 2. Productos de la nube (elimina cualquier producto fantasma viejo)
+        if (cloudData.products !== null) {
+          applyCloudProducts(cloudData.products);
+        }
+
+        // 3. Pedidos, Ventas, Compras y Ubicaciones
         if (cloudData.orders !== null) {
           setOrders(cloudData.orders);
-          localStorage.setItem('sq_orders', JSON.stringify(cloudData.orders));
+          try { localStorage.setItem('sq_orders', JSON.stringify(cloudData.orders)); } catch(e) {}
         }
 
-        // Ventas: reflejar la nube
         if (cloudData.sales !== null) {
           setSales(cloudData.sales);
-          localStorage.setItem('sq_sales', JSON.stringify(cloudData.sales));
+          try { localStorage.setItem('sq_sales', JSON.stringify(cloudData.sales)); } catch(e) {}
         }
 
-        // Compras: reflejar la nube
         if (cloudData.purchases !== null) {
           setPurchases(cloudData.purchases);
-          localStorage.setItem('sq_purchases', JSON.stringify(cloudData.purchases));
+          try { localStorage.setItem('sq_purchases', JSON.stringify(cloudData.purchases)); } catch(e) {}
         }
 
         if (cloudData.locations !== null && cloudData.locations.length > 0) {
@@ -146,16 +254,16 @@ export function AppProvider({ children }) {
     const channel = supabase
       .channel('squishy_cloud_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_orders' }, async () => {
-        const fresh = await fetchAllFromSupabase();
+        const fresh = await fetchAllFromSupabase(false);
         if (fresh?.orders !== null && isMounted) setOrders(fresh.orders);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_inventory' }, async () => {
-        const fresh = await fetchAllFromSupabase();
-        if (fresh?.inventory !== null && isMounted) setInventory(fresh.inventory);
+        const fresh = await fetchAllFromSupabase(false);
+        if (fresh?.inventory !== null && isMounted) applyCloudInventory(fresh.inventory);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_products' }, async () => {
-        const fresh = await fetchAllFromSupabase();
-        if (fresh?.products !== null && isMounted) setProducts(fresh.products);
+        const fresh = await fetchAllFromSupabase(false);
+        if (fresh?.products !== null && isMounted) applyCloudProducts(fresh.products);
       })
       .subscribe();
 
@@ -170,7 +278,6 @@ export function AppProvider({ children }) {
     try {
       localStorage.setItem('sq_version', STORAGE_VERSION);
       localStorage.setItem('sq_locations', JSON.stringify(locations));
-      localStorage.setItem('sq_products', JSON.stringify(products));
       localStorage.setItem('sq_inventory', JSON.stringify(inventory));
       localStorage.setItem('sq_purchases', JSON.stringify(purchases));
       localStorage.setItem('sq_sales', JSON.stringify(sales));
@@ -178,14 +285,14 @@ export function AppProvider({ children }) {
       localStorage.setItem('sq_active_location', activeLocationId);
       localStorage.setItem('sq_whatsapp', whatsappNumber);
     } catch (err) {
-      console.warn('LocalStorage saturado por fotos en base64. Guardando respaldo ligero:', err);
-      try {
-        const lightProducts = products.map(p => ({ ...p, images: [] }));
-        localStorage.setItem('sq_products', JSON.stringify(lightProducts));
-      } catch (e) {
-        // Ignorar si el almacenamiento local del navegador está lleno
-      }
+      console.warn('Error al guardar estado base en LocalStorage:', err);
     }
+
+    try {
+      // Guardar metadatos de productos en LocalStorage (ligero, 4 KB) mientras las fotos viven en IndexedDB
+      const lightProducts = products.map(p => ({ ...p, images: [] }));
+      localStorage.setItem('sq_products', JSON.stringify(lightProducts));
+    } catch (e) {}
   }, [locations, products, inventory, purchases, sales, orders, activeLocationId, whatsappNumber]);
 
   // Helper para comparar listas de pedidos y evitar re-renders innecesarios
@@ -220,10 +327,10 @@ export function AppProvider({ children }) {
       console.warn('Error al leer pedidos de localStorage:', e);
     }
 
-    // 2. Si Supabase está configurado en la nube, traer los pedidos más frescos
+    // 2. Si Supabase está configurado en la nube, traer los pedidos y existencias más frescos (consulta ligera ~7 KB)
     if (isSupabaseConfigured && supabase) {
       try {
-        const cloudData = await fetchAllFromSupabase();
+        const cloudData = await fetchAllFromSupabase(false);
         if (cloudData && cloudData.orders !== null) {
           setOrders(prev => {
             if (areOrdersEqual(prev, cloudData.orders)) return prev;
@@ -234,36 +341,10 @@ export function AppProvider({ children }) {
           });
         }
         if (cloudData && cloudData.inventory !== null) {
-          setInventory(prev => {
-            const merged = { ...cloudData.inventory };
-            Object.keys(prev).forEach(k => {
-              if (merged[k] === undefined && typeof prev[k] === 'number') {
-                merged[k] = prev[k];
-              }
-            });
-            try {
-              localStorage.setItem('sq_inventory', JSON.stringify(merged));
-            } catch(e) {}
-            return merged;
-          });
+          applyCloudInventory(cloudData.inventory);
         }
         if (cloudData && cloudData.products !== null) {
-          setProducts(prev => {
-            const cloudIds = new Set(cloudData.products.map(p => p.id));
-            const localOnly = prev.filter(p => !cloudIds.has(p.id));
-            const merged = cloudData.products.map(cp => {
-              const localMatch = prev.find(p => p.id === cp.id);
-              return {
-                ...cp,
-                initialStock: localMatch?.initialStock ?? cp.initialStock
-              };
-            });
-            const result = [...merged, ...localOnly];
-            try {
-              localStorage.setItem('sq_products', JSON.stringify(result));
-            } catch(e) {}
-            return result;
-          });
+          applyCloudProducts(cloudData.products);
         }
       } catch (err) {
         console.warn('Error al sincronizar pedidos de Supabase:', err);
@@ -344,18 +425,23 @@ export function AppProvider({ children }) {
 
   // CÁLCULO INTELIGENTE DE STOCK EN EXISTENCIA
   const getStock = (locationId, productId) => {
-    // 1. Stock directo en esta ubicación
+    // 1. Stock directo en esta ubicación (si es positivo)
     const directKey = `${locationId}_${productId}`;
-    if (typeof inventory[directKey] === 'number') {
-      return Math.max(0, inventory[directKey]);
+    if (typeof inventory[directKey] === 'number' && inventory[directKey] > 0) {
+      return inventory[directKey];
     }
 
-    // 2. Si no hay stock directo en este punto, ver si hay en bodega u otra sucursal
+    // 2. Si en esta ubicación es 0 o no existe, buscar si hay existencias en cualquier otro punto (ej. Punto de Venta Principal o Bodega)
     const otherKeys = Object.keys(inventory).filter(
       k => k.endsWith(`_${productId}`) && typeof inventory[k] === 'number' && inventory[k] > 0
     );
     if (otherKeys.length > 0) {
       return otherKeys.reduce((sum, k) => sum + inventory[k], 0);
+    }
+
+    // Si existe la llave directa en 0 y ninguna otra ubicación tiene stock, es 0
+    if (typeof inventory[directKey] === 'number') {
+      return 0;
     }
 
     const prod = products.find(p => p.id === productId);
@@ -433,12 +519,20 @@ export function AppProvider({ children }) {
     const locId = targetLocationId || activeLocationId || 'loc-2';
     const prodId = `sq-${Date.now()}`;
     const key = `${locId}_${prodId}`;
+    const validImages = Array.isArray(images) ? images : [];
+
+    pendingProductIdsRef.current.add(prodId);
+    if (validImages.length > 0) {
+      imagesCacheRef.current[prodId] = validImages;
+      loadedImageIdsRef.current.add(prodId);
+      setCachedProductImages(prodId, validImages);
+    }
 
     const newProd = {
       id: prodId,
       name: name.trim(),
       category: category.trim() || 'General',
-      images: Array.isArray(images) ? images : [],
+      images: validImages,
       emoji: emoji || '',
       costPrice: Number(parseFloat(costPrice) || 0),
       salePrice: Number(parseFloat(salePrice) || 0),
@@ -451,7 +545,10 @@ export function AppProvider({ children }) {
     // 1. Guardar de inmediato en estado local y LocalStorage (0 ms de espera en pantalla)
     setProducts(prev => {
       const updated = [...prev.filter(p => p.id !== newProd.id), newProd];
-      try { localStorage.setItem('sq_products', JSON.stringify(updated)); } catch(e) {}
+      try {
+        const light = updated.map(p => ({ ...p, images: [] }));
+        localStorage.setItem('sq_products', JSON.stringify(light));
+      } catch(e) {}
       return updated;
     });
 
@@ -479,6 +576,8 @@ export function AppProvider({ children }) {
       }
     } catch (syncErr) {
       console.warn('Error sincronizando nuevo producto a Supabase:', syncErr);
+    } finally {
+      pendingProductIdsRef.current.delete(prodId);
     }
 
     return newProd;
@@ -487,6 +586,11 @@ export function AppProvider({ children }) {
   // MODIFICAR PRODUCTO
   const updateProduct = async ({ id, name, category, images, costPrice, salePrice, boxCost, unitsPerBox, newStock, locationId }) => {
     let updatedProd = null;
+    if (Array.isArray(images) && images.length > 0) {
+      imagesCacheRef.current[id] = images;
+      loadedImageIdsRef.current.add(id);
+      setCachedProductImages(id, images);
+    }
     setProducts(prev => {
       const updatedList = prev.map(p => {
         if (p.id === id) {
@@ -504,7 +608,10 @@ export function AppProvider({ children }) {
         }
         return p;
       });
-      try { localStorage.setItem('sq_products', JSON.stringify(updatedList)); } catch(e) {}
+      try {
+        const light = updatedList.map(p => ({ ...p, images: [] }));
+        localStorage.setItem('sq_products', JSON.stringify(light));
+      } catch(e) {}
       return updatedList;
     });
 

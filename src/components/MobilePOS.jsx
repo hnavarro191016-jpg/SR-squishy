@@ -466,7 +466,7 @@ export default function MobilePOS({
       </div>
 
       {/* ESTADO DE CARGA O EN BLANCO */}
-      {isLoadingCloud && products.length === 0 ? (
+      {isLoadingCloud ? (
         <div className="bg-white rounded-3xl p-10 sm:p-14 text-center border border-slate-200 shadow-sm space-y-3">
           <div className="w-10 h-10 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <h3 className="text-base font-black text-slate-800">Cargando tus squishys desde la nube...</h3>

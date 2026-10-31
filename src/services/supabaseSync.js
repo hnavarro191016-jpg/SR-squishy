@@ -1,11 +1,15 @@
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
-export async function fetchAllFromSupabase() {
+export async function fetchAllFromSupabase(includeImages = false) {
   if (!isSupabaseConfigured || !supabase) return null;
 
   try {
+    const productColumns = includeImages
+      ? '*'
+      : 'id,name,category,emoji,cost_price,sale_price,min_stock,box_cost_reference,units_per_box_reference';
+
     const [prodsRes, invRes, ordersRes, salesRes, purchasesRes, locsRes] = await Promise.all([
-      supabase.from('sq_products').select('*'),
+      supabase.from('sq_products').select(productColumns),
       supabase.from('sq_inventory').select('*'),
       supabase.from('sq_orders').select('*').order('created_at', { ascending: false }),
       supabase.from('sq_sales').select('*').order('created_at', { ascending: false }),
@@ -24,7 +28,7 @@ export async function fetchAllFromSupabase() {
       id: p.id,
       name: p.name,
       category: p.category,
-      images: p.images || [],
+      images: Array.isArray(p.images) ? p.images : null,
       emoji: p.emoji || '🧸',
       costPrice: Number(p.cost_price) || 0,
       salePrice: Number(p.sale_price) || 0,
@@ -114,6 +118,29 @@ export async function fetchAllFromSupabase() {
   } catch (err) {
     console.error('Error al cargar datos desde Supabase:', err);
     return null;
+  }
+}
+
+export async function fetchProductImagesBatchFromSupabase(productIds) {
+  if (!isSupabaseConfigured || !supabase || !Array.isArray(productIds) || productIds.length === 0) {
+    return [];
+  }
+  try {
+    const { data, error } = await supabase
+      .from('sq_products')
+      .select('id,images')
+      .in('id', productIds);
+    if (error) {
+      console.warn('Error al cargar lote de fotos de productos:', error);
+      return [];
+    }
+    return (data || []).map(row => ({
+      id: row.id,
+      images: Array.isArray(row.images) ? row.images : []
+    }));
+  } catch (err) {
+    console.warn('Error en fetchProductImagesBatchFromSupabase:', err);
+    return [];
   }
 }
 
