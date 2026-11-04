@@ -139,7 +139,8 @@ export function AppProvider({ children }) {
 
           setProducts(prev => prev.map(p => {
             if (batchMap[p.id] && batchMap[p.id].length > 0) {
-              return { ...p, images: batchMap[p.id] };
+              const freshSig = computeImagesSignature(batchMap[p.id]);
+              return { ...p, images: batchMap[p.id], imageSignature: freshSig };
             }
             return p;
           }));
@@ -168,14 +169,15 @@ export function AppProvider({ children }) {
             ? cachedImgs
             : [];
 
-        // Si en la nube cambió la firma de las fotos (ej. el administrador editó las fotos del squishy), invalidar caché viejo y descargar las nuevas
+        // Si en la nube cambió la firma de las fotos, descargar en segundo plano sin vaciar candidateImages
+        // para evitar cualquier tipo de parpadeo visual en pantalla
         if (cp.imageSignature && candidateImages.length > 0) {
           const localSig = computeImagesSignature(candidateImages);
           if (localSig !== cp.imageSignature) {
-            candidateImages = [];
-            delete imagesCacheRef.current[cp.id];
             loadedImageIdsRef.current.delete(cp.id);
-            deleteCachedProductImages(cp.id);
+            setTimeout(() => {
+              loadMissingProductImages([{ id: cp.id, images: [] }]);
+            }, 60);
           }
         } else if (
           !cp.imageSignature &&
