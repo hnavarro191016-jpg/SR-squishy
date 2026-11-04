@@ -129,7 +129,8 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
     text += `------------------------------------\n`;
     text += `🛍️ *ARTÍCULOS ENTREGADOS:*\n`;
     (order.items || []).forEach(item => {
-      text += `• *${item.quantity}x* ${item.name} — $${(item.quantity * item.price).toFixed(2)} MXN\n`;
+      const colorTxt = item.color ? ` (Color: *${item.color}*)` : '';
+      text += `• *${item.quantity}x* ${item.name}${colorTxt} — $${(item.quantity * item.price).toFixed(2)} MXN\n`;
     });
     text += `------------------------------------\n`;
     text += `💰 *TOTAL PAGADO: $${total.toFixed(2)} MXN*\n`;
@@ -345,6 +346,11 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
                           {item.quantity}x
                         </span>
                         <span className="text-slate-800 font-semibold truncate">{item.name}</span>
+                        {item.color && (
+                          <span className="text-[10px] font-extrabold text-pink-700 bg-pink-100 px-1 rounded shrink-0">
+                            {item.color}
+                          </span>
+                        )}
                       </div>
                       <span className="font-bold text-slate-700 shrink-0">
                         ${(item.quantity * item.price).toFixed(2)}

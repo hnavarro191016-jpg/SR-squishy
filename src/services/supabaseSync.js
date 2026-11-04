@@ -33,7 +33,13 @@ export async function fetchAllFromSupabase(includeImages = false) {
 
     const prods = prodsRes.error ? null : (prodsRes.data || []).map(p => {
       const rawEmoji = p.emoji || '🧸';
-      const [cleanEmoji, imageSignature] = rawEmoji.split('|');
+      const [cleanEmoji, imageSignature, rawColors] = rawEmoji.split('|');
+      let colors = [];
+      if (rawColors) {
+        try {
+          colors = JSON.parse(decodeURIComponent(rawColors));
+        } catch (e) {}
+      }
       return {
         id: p.id,
         name: p.name,
@@ -41,6 +47,7 @@ export async function fetchAllFromSupabase(includeImages = false) {
         images: Array.isArray(p.images) ? p.images : null,
         emoji: cleanEmoji || '🧸',
         imageSignature: imageSignature || null,
+        colors: Array.isArray(colors) ? colors : [],
         costPrice: Number(p.cost_price) || 0,
         salePrice: Number(p.sale_price) || 0,
         minStock: p.min_stock || 5,
@@ -161,12 +168,19 @@ export async function syncProductToSupabase(p) {
   try {
     const cleanEmoji = ((p.emoji || '🧸').split('|')[0]) || '🧸';
     const sig = computeImagesSignature(p.images || []);
+    const colorsEncoded = (Array.isArray(p.colors) && p.colors.length > 0)
+      ? encodeURIComponent(JSON.stringify(p.colors))
+      : '';
+    const emojiCombined = colorsEncoded 
+      ? `${cleanEmoji}|${sig}|${colorsEncoded}` 
+      : `${cleanEmoji}|${sig}`;
+
     const { error } = await supabase.from('sq_products').upsert({
       id: p.id,
       name: p.name,
       category: p.category,
       images: p.images || [],
-      emoji: `${cleanEmoji}|${sig}`,
+      emoji: emojiCombined,
       cost_price: p.costPrice || 0,
       sale_price: p.salePrice || 0,
       min_stock: p.minStock || 5,

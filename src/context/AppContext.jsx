@@ -531,6 +531,7 @@ export function AppProvider({ children }) {
     name,
     category = 'General',
     images = [],
+    colors = [],
     emoji = '',
     costPrice,
     salePrice,
@@ -544,6 +545,7 @@ export function AppProvider({ children }) {
     const prodId = `sq-${Date.now()}`;
     const key = `${locId}_${prodId}`;
     const validImages = Array.isArray(images) ? images : [];
+    const validColors = Array.isArray(colors) ? colors : [];
 
     pendingProductIdsRef.current.add(prodId);
     if (validImages.length > 0) {
@@ -557,6 +559,7 @@ export function AppProvider({ children }) {
       name: name.trim(),
       category: category.trim() || 'General',
       images: validImages,
+      colors: validColors,
       emoji: emoji || '',
       costPrice: Number(parseFloat(costPrice) || 0),
       salePrice: Number(parseFloat(salePrice) || 0),
@@ -608,9 +611,10 @@ export function AppProvider({ children }) {
   };
 
   // MODIFICAR PRODUCTO
-  const updateProduct = async ({ id, name, category, images, costPrice, salePrice, boxCost, unitsPerBox, newStock, locationId }) => {
+  const updateProduct = async ({ id, name, category, images, colors, costPrice, salePrice, boxCost, unitsPerBox, newStock, locationId }) => {
     const existingProd = products.find(p => p.id === id) || {};
     const validImages = Array.isArray(images) ? images : (existingProd.images || []);
+    const validColors = colors !== undefined ? (Array.isArray(colors) ? colors : []) : (existingProd.colors || []);
 
     const updatedProd = {
       ...existingProd,
@@ -618,6 +622,7 @@ export function AppProvider({ children }) {
       name: name.trim(),
       category: category.trim() || 'General',
       images: validImages,
+      colors: validColors,
       emoji: existingProd.emoji || '🧸',
       imageSignature: computeImagesSignature(validImages),
       costPrice: Number(parseFloat(costPrice) || 0),
@@ -787,6 +792,7 @@ export function AppProvider({ children }) {
       return {
         productId: item.productId,
         name: item.name || (prod ? prod.name : 'Squishy'),
+        color: item.color || '',
         image: item.image || (prod?.images?.[0] || null),
         emoji: prod?.emoji || '🧸',
         quantity: item.quantity,
@@ -848,6 +854,36 @@ export function AppProvider({ children }) {
       return updated;
     });
 
+    // Descontar existencias de colores específicos en los productos
+    setProducts(prevProds => {
+      let changed = false;
+      const updatedProds = prevProds.map(prod => {
+        const matchingItems = saleItems.filter(si => si.productId === prod.id && si.color);
+        if (matchingItems.length > 0 && Array.isArray(prod.colors) && prod.colors.length > 0) {
+          changed = true;
+          const updatedColors = prod.colors.map(col => {
+            const match = matchingItems.find(m => (m.color || '').trim().toLowerCase() === (col.name || '').trim().toLowerCase());
+            if (match) {
+              return { ...col, stock: Math.max(0, (Number(col.stock) || 0) - match.quantity) };
+            }
+            return col;
+          });
+          const updatedP = { ...prod, colors: updatedColors };
+          syncProductToSupabase(updatedP);
+          return updatedP;
+        }
+        return prod;
+      });
+      if (changed) {
+        try {
+          const light = updatedProds.map(p => ({ ...p, images: [] }));
+          localStorage.setItem('sq_products', JSON.stringify(light));
+        } catch(e) {}
+        return updatedProds;
+      }
+      return prevProds;
+    });
+
     setSales(prev => [newSale, ...prev]);
     syncSaleToSupabase(newSale);
 
@@ -887,6 +923,7 @@ export function AppProvider({ children }) {
       return {
         productId: item.productId,
         name: item.name || (prod ? prod.name : 'Squishy'),
+        color: item.color || '',
         image: item.image || (prod?.images?.[0] || null),
         emoji: prod?.emoji || '🧸',
         quantity: item.quantity,
@@ -950,6 +987,36 @@ export function AppProvider({ children }) {
         });
       });
       return updated;
+    });
+
+    // Descontar existencias de colores específicos en los productos para pedidos
+    setProducts(prevProds => {
+      let changed = false;
+      const updatedProds = prevProds.map(prod => {
+        const matchingItems = orderItems.filter(oi => oi.productId === prod.id && oi.color);
+        if (matchingItems.length > 0 && Array.isArray(prod.colors) && prod.colors.length > 0) {
+          changed = true;
+          const updatedColors = prod.colors.map(col => {
+            const match = matchingItems.find(m => (m.color || '').trim().toLowerCase() === (col.name || '').trim().toLowerCase());
+            if (match) {
+              return { ...col, stock: Math.max(0, (Number(col.stock) || 0) - match.quantity) };
+            }
+            return col;
+          });
+          const updatedP = { ...prod, colors: updatedColors };
+          syncProductToSupabase(updatedP);
+          return updatedP;
+        }
+        return prod;
+      });
+      if (changed) {
+        try {
+          const light = updatedProds.map(p => ({ ...p, images: [] }));
+          localStorage.setItem('sq_products', JSON.stringify(light));
+        } catch(e) {}
+        return updatedProds;
+      }
+      return prevProds;
     });
 
     setOrders(prev => [newOrder, ...prev]);
@@ -1028,6 +1095,36 @@ export function AppProvider({ children }) {
           syncInventoryKeyToSupabase(key, updated[key]);
         });
         return updated;
+      });
+
+      // Restaurar stock de colores si el pedido tenía variantes de color
+      setProducts(prevProds => {
+        let changed = false;
+        const updatedProds = prevProds.map(prod => {
+          const matchingItems = (order.items || []).filter(oi => oi.productId === prod.id && oi.color);
+          if (matchingItems.length > 0 && Array.isArray(prod.colors) && prod.colors.length > 0) {
+            changed = true;
+            const updatedColors = prod.colors.map(col => {
+              const match = matchingItems.find(m => (m.color || '').trim().toLowerCase() === (col.name || '').trim().toLowerCase());
+              if (match) {
+                return { ...col, stock: (Number(col.stock) || 0) + match.quantity };
+              }
+              return col;
+            });
+            const updatedP = { ...prod, colors: updatedColors };
+            syncProductToSupabase(updatedP);
+            return updatedP;
+          }
+          return prod;
+        });
+        if (changed) {
+          try {
+            const light = updatedProds.map(p => ({ ...p, images: [] }));
+            localStorage.setItem('sq_products', JSON.stringify(light));
+          } catch(e) {}
+          return updatedProds;
+        }
+        return prevProds;
       });
     }
 

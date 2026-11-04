@@ -224,7 +224,8 @@ export default function OrdersManager() {
     text += `------------------------------------\n`;
     text += `🛍️ *ARTÍCULOS ENTREGADOS:*\n`;
     (order.items || []).forEach(item => {
-      text += `• *${item.quantity}x* ${item.name} — $${(item.quantity * (item.unitPrice || item.price || 0)).toFixed(2)} MXN\n`;
+      const colorTxt = item.color ? ` (Color: *${item.color}*)` : '';
+      text += `• *${item.quantity}x* ${item.name}${colorTxt} — $${(item.quantity * (item.unitPrice || item.price || 0)).toFixed(2)} MXN\n`;
     });
     text += `------------------------------------\n`;
     text += `💰 *TOTAL PAGADO: $${total.toFixed(2)} MXN*\n`;
@@ -628,6 +629,11 @@ export default function OrdersManager() {
                           <span>{item.emoji || '🧸'}</span>
                         )}
                         <span>{item.quantity}x {item.name}</span>
+                        {item.color && (
+                          <span className="text-[10px] font-extrabold text-pink-700 bg-pink-100/80 px-1 rounded">
+                            {item.color}
+                          </span>
+                        )}
                       </span>
                     ))}
                     {order.deliveryNotes && (
@@ -862,8 +868,13 @@ export default function OrdersManager() {
                   <div className="bg-slate-50 rounded-xl p-2 space-y-1 text-xs mb-2">
                     {order.items.map((item, idx) => (
                       <div key={idx} className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 truncate pr-2">
-                          {item.quantity}x {item.name}
+                        <span className="font-bold text-slate-800 truncate pr-2 flex items-center gap-1">
+                          <span>{item.quantity}x {item.name}</span>
+                          {item.color && (
+                            <span className="text-[10px] font-extrabold text-pink-700 bg-pink-100/80 px-1 rounded">
+                              {item.color}
+                            </span>
+                          )}
                         </span>
                         <span className="font-extrabold text-slate-900 shrink-0">
                           ${(item.quantity * item.unitPrice).toFixed(2)}

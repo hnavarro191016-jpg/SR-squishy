@@ -124,7 +124,8 @@ export default function MobileOrderCaptureModal({ isOpen, onClose }) {
       }
       msg += `------------------------------------\n`;
       cart.forEach(item => {
-        msg += `• *${item.quantity}x* ${item.name} ($${(item.quantity * item.price).toFixed(2)})\n`;
+        const colTxt = item.color ? ` (Color: *${item.color}*)` : '';
+        msg += `• *${item.quantity}x* ${item.name}${colTxt} ($${(item.quantity * item.price).toFixed(2)})\n`;
       });
       msg += `------------------------------------\n`;
       msg += `💰 *TOTAL:* $${totalAmount.toFixed(2)} MXN\n`;

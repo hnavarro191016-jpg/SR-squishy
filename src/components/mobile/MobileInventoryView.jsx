@@ -13,6 +13,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { getColorVisual } from '../../utils/colorHelper';
 
 export default function MobileInventoryView({ onEditProduct }) {
   const { 
@@ -133,6 +134,29 @@ export default function MobileInventoryView({ onEditProduct }) {
                     <p className="text-[10px] font-bold text-slate-400">
                       Venta: <span className="text-pink-600 font-black">${prod.salePrice}</span> • Costo: ${prod.costPrice}
                     </p>
+                    {/* Variantes de colores si tiene */}
+                    {prod.colors && prod.colors.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1 pt-1">
+                        {prod.colors.map((c, i) => {
+                          const visual = getColorVisual(c.name);
+                          const isOut = (Number(c.stock) || 0) <= 0;
+                          return (
+                            <span
+                              key={i}
+                              className={`inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-md border ${
+                                isOut
+                                  ? 'bg-slate-50 text-slate-400 border-slate-200 line-through opacity-50'
+                                  : visual.badge
+                              }`}
+                            >
+                              <span>{visual.emoji}</span>
+                              <span>{c.name}</span>
+                              <span className="opacity-75">({c.stock || 0})</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 

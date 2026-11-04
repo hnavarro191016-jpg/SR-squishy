@@ -25,9 +25,11 @@ import {
   Phone,
   Edit3,
   Eye,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Palette
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { getColorVisual } from '../utils/colorHelper';
 
 function playSaleSound() {
   try {
@@ -151,6 +153,13 @@ export default function MobilePOS({
   const [tempWhatsApp, setTempWhatsApp] = useState(whatsappNumber || '');
   const [customerName, setCustomerName] = useState('');
 
+  // Modal de Selección de Color para el Carrito
+  const [colorModalProduct, setColorModalProduct] = useState(null);
+  const [selectedColor, setSelectedColor] = useState(null);
+  const [colorQuantity, setColorQuantity] = useState(1);
+
+  const getCartKey = (productId, color) => `${productId}_${color || ''}`;
+
   // Notificar al contenedor principal cuando hay artículos en el carrito para ocultar menús
   React.useEffect(() => {
     if (onCartChange) {
@@ -190,44 +199,75 @@ export default function MobilePOS({
     return { totalItems, totalAmount, totalCost, totalProfit, profitMargin };
   }, [cart]);
 
-  const addToCart = (product) => {
-    const stock = getStock(activeLocationId, product.id);
-    const existing = cart.find(item => item.productId === product.id);
+  const handleInitiateAddToCart = (product) => {
+    if (Array.isArray(product.colors) && product.colors.length > 0) {
+      setColorModalProduct(product);
+      const firstInStock = product.colors.find(c => (Number(c.stock) || 0) > 0) || product.colors[0];
+      setSelectedColor(firstInStock);
+      setColorQuantity(1);
+    } else {
+      addToCart(product, null, 1);
+    }
+  };
+
+  const addToCart = (product, chosenColorName = null, chosenQty = 1) => {
+    const totalStock = getStock(activeLocationId, product.id);
+    let maxAvail = totalStock;
+
+    if (chosenColorName && Array.isArray(product.colors)) {
+      const colObj = product.colors.find(c => c.name.toLowerCase() === chosenColorName.toLowerCase());
+      if (colObj) {
+        maxAvail = Number(colObj.stock) || 0;
+      }
+    }
+
+    const targetKey = getCartKey(product.id, chosenColorName);
+    const existing = cart.find(item => getCartKey(item.productId, item.color) === targetKey);
     const currentQtyInCart = existing ? existing.quantity : 0;
 
-    if (currentQtyInCart >= stock) {
-      alert(`¡Solo quedan ${stock} piezas disponibles en ${currentLocation.name}!`);
+    if (currentQtyInCart + chosenQty > maxAvail) {
+      alert(`¡Solo quedan ${maxAvail} piezas disponibles${chosenColorName ? ` en color "${chosenColorName}"` : ''} en ${currentLocation.name}!`);
       return;
     }
 
     if (existing) {
       setCart(cart.map(item => 
-        item.productId === product.id 
-          ? { ...item, quantity: item.quantity + 1 }
+        getCartKey(item.productId, item.color) === targetKey
+          ? { ...item, quantity: item.quantity + chosenQty }
           : item
       ));
     } else {
       setCart([...cart, {
         productId: product.id,
         name: product.name,
+        color: chosenColorName || null,
         image: product.images && product.images.length > 0 ? product.images[0] : null,
         emoji: product.emoji,
         price: product.salePrice,
         costPrice: product.costPrice,
-        quantity: 1
+        quantity: chosenQty
       }]);
     }
   };
 
-  const updateQuantity = (productId, delta) => {
-    const stock = getStock(activeLocationId, productId);
+  const updateQuantity = (productId, delta, color = null) => {
+    const prod = products.find(p => p.id === productId);
+    let maxAvail = getStock(activeLocationId, productId);
+    if (color && prod && Array.isArray(prod.colors)) {
+      const colObj = prod.colors.find(c => c.name.toLowerCase() === color.toLowerCase());
+      if (colObj) {
+        maxAvail = Number(colObj.stock) || 0;
+      }
+    }
+
+    const targetKey = getCartKey(productId, color);
 
     setCart(prev => {
       return prev.map(item => {
-        if (item.productId === productId) {
+        if (getCartKey(item.productId, item.color) === targetKey) {
           const newQty = item.quantity + delta;
-          if (newQty > stock) {
-            alert(`Stock máximo alcanzado (${stock} piezas)`);
+          if (newQty > maxAvail) {
+            alert(`Stock máximo alcanzado (${maxAvail} piezas)`);
             return item;
           }
           return newQty > 0 ? { ...item, quantity: newQty } : null;
@@ -306,7 +346,8 @@ export default function MobilePOS({
       message += `------------------------------------\n`;
 
       cart.forEach(item => {
-        message += `• *${item.quantity}x* ${item.name} ($${(item.quantity * item.price).toFixed(2)})\n`;
+        const colorTag = item.color ? ` (Color: *${item.color}*)` : '';
+        message += `• *${item.quantity}x* ${item.name}${colorTag} ($${(item.quantity * item.price).toFixed(2)})\n`;
       });
 
       message += `------------------------------------\n`;
@@ -503,7 +544,8 @@ export default function MobilePOS({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
           {filteredProducts.map(product => {
             const stock = getStock(activeLocationId, product.id);
-            const inCartItem = cart.find(c => c.productId === product.id);
+            const inCartItems = cart.filter(c => c.productId === product.id);
+            const totalInCartForProduct = inCartItems.reduce((sum, item) => sum + item.quantity, 0);
             const isOutOfStock = stock <= 0;
             const profit = product.salePrice - product.costPrice;
             const margin = product.salePrice > 0 ? ((profit / product.salePrice) * 100).toFixed(0) : '0';
@@ -515,15 +557,15 @@ export default function MobilePOS({
                 className={`relative bg-white rounded-2xl p-3 sm:p-4 border transition-all duration-150 select-none flex flex-col justify-between group ${
                   isOutOfStock 
                     ? 'opacity-65 border-slate-200 bg-slate-50' 
-                    : inCartItem
+                    : totalInCartForProduct > 0
                     ? 'border-pink-500 ring-2 ring-pink-500/20 shadow-md'
                     : 'border-slate-200 shadow-sm hover:shadow-md hover:border-pink-300'
                 }`}
               >
                 {/* Badge en Carrito */}
-                {inCartItem && (
+                {totalInCartForProduct > 0 && (
                   <div className="absolute -top-2 -left-2 bg-pink-600 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center shadow-md animate-bounce z-20">
-                    {inCartItem.quantity}
+                    {totalInCartForProduct}
                   </div>
                 )}
 
@@ -535,7 +577,7 @@ export default function MobilePOS({
                         setPreviewProduct(product);
                         setPreviewImageIndex(0);
                       } else if (!isOutOfStock) {
-                        addToCart(product);
+                        handleInitiateAddToCart(product);
                       }
                     }}
                     className="relative w-full aspect-square rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center mb-2.5 cursor-pointer"
@@ -601,6 +643,31 @@ export default function MobilePOS({
                     <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-tight line-clamp-2">
                       {product.name}
                     </h3>
+
+                    {/* Variantes de colores disponibles */}
+                    {product.colors && product.colors.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                        {product.colors.map((c, i) => {
+                          const visual = getColorVisual(c.name);
+                          const isColorOut = (Number(c.stock) || 0) <= 0;
+                          return (
+                            <span
+                              key={i}
+                              className={`inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border ${
+                                isColorOut
+                                  ? 'bg-slate-50 text-slate-400 border-slate-200 line-through opacity-50'
+                                  : visual.badge
+                              }`}
+                              title={`${c.name}: ${c.stock || 0} disponibles`}
+                            >
+                              <span>{visual.emoji}</span>
+                              <span>{c.name}</span>
+                              <span className="opacity-75">({c.stock || 0})</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {/* Precio y Margen */}
                     <div className="flex items-baseline justify-between pt-1">
@@ -677,7 +744,7 @@ export default function MobilePOS({
 
                 {/* Botón de Agregar / Pedir */}
                 <button
-                  onClick={() => !isOutOfStock && addToCart(product)}
+                  onClick={() => !isOutOfStock && handleInitiateAddToCart(product)}
                   disabled={isOutOfStock}
                   className={`w-full mt-3 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${
                     isOutOfStock
@@ -685,8 +752,17 @@ export default function MobilePOS({
                       : 'bg-slate-900 hover:bg-pink-600 text-white shadow-sm active:scale-95'
                   }`}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>{isOutOfStock ? 'Sin Existencia' : 'Agregar'}</span>
+                  {product.colors && product.colors.length > 0 ? (
+                    <>
+                      <Palette className="w-3.5 h-3.5" />
+                      <span>{isOutOfStock ? 'Sin Existencia' : 'Elegir Color'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      <span>{isOutOfStock ? 'Sin Existencia' : 'Agregar'}</span>
+                    </>
+                  )}
                 </button>
 
               </div>
@@ -843,13 +919,178 @@ export default function MobilePOS({
 
             <button
               onClick={() => {
-                addToCart(previewProduct);
+                const prod = previewProduct;
                 setPreviewProduct(null);
+                handleInitiateAddToCart(prod);
               }}
               className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-extrabold text-sm rounded-2xl shadow-lg shadow-pink-500/25 hover:from-pink-600 hover:to-rose-700 active:scale-95 transition-all flex items-center justify-center gap-2"
             >
-              <Plus className="w-5 h-5" />
-              <span>Agregar al Pedido (${previewProduct.salePrice.toFixed(2)})</span>
+              {previewProduct.colors && previewProduct.colors.length > 0 ? (
+                <>
+                  <Palette className="w-5 h-5" />
+                  <span>Elegir Color y Agregar (${previewProduct.salePrice.toFixed(2)})</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5" />
+                  <span>Agregar al Pedido (${previewProduct.salePrice.toFixed(2)})</span>
+                </>
+              )}
+            </button>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PARA SELECCIONAR COLOR Y DISPONIBILIDAD */}
+      {colorModalProduct && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl relative space-y-4 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            
+            {/* Botón cerrar */}
+            <button
+              onClick={() => setColorModalProduct(null)}
+              className="absolute right-4 top-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Cabecera con foto y nombre */}
+            <div className="flex items-center gap-3 pr-8">
+              <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                {colorModalProduct.images && colorModalProduct.images.length > 0 ? (
+                  <img src={colorModalProduct.images[0]} alt={colorModalProduct.name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="w-full h-full flex items-center justify-center text-2xl">{colorModalProduct.emoji || '🧸'}</span>
+                )}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-pink-600 block truncate">
+                  {colorModalProduct.category || 'Squishy'}
+                </span>
+                <h3 className="font-black text-sm text-slate-900 leading-tight truncate">
+                  {colorModalProduct.name}
+                </h3>
+                <span className="text-base font-black text-slate-900">
+                  ${colorModalProduct.salePrice.toFixed(2)} <span className="text-xs text-slate-400 font-normal">MXN</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <Palette className="w-4 h-4 text-pink-600" />
+                  <span>¿Qué color deseas?</span>
+                </span>
+                <span className="text-[11px] font-bold text-slate-400">
+                  Elige tu modelo
+                </span>
+              </div>
+
+              {/* Lista de colores disponibles */}
+              <div className="space-y-2">
+                {colorModalProduct.colors.map((c, i) => {
+                  const visual = getColorVisual(c.name);
+                  const isSelected = selectedColor?.name?.toLowerCase() === c.name.toLowerCase();
+                  const stockNum = Number(c.stock) || 0;
+                  const isOut = stockNum <= 0;
+
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      disabled={isOut}
+                      onClick={() => {
+                        setSelectedColor(c);
+                        setColorQuantity(1);
+                      }}
+                      className={`w-full p-3 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                        isOut
+                          ? 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed'
+                          : isSelected
+                          ? 'bg-pink-50/70 border-pink-500 ring-2 ring-pink-500/20 shadow-sm'
+                          : 'bg-white hover:bg-slate-50 border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xl">{visual.emoji}</span>
+                        <div>
+                          <span className={`font-black text-xs block ${isSelected ? 'text-pink-900' : 'text-slate-800'}`}>
+                            {c.name}
+                          </span>
+                          <span className={`text-[10px] font-bold ${
+                            isOut ? 'text-red-500' : stockNum <= 3 ? 'text-amber-600' : 'text-emerald-600'
+                          }`}>
+                            {isOut ? '🔴 Agotado' : stockNum <= 3 ? `🔥 ¡Solo quedan ${stockNum}!` : `🟢 ${stockNum} disponibles`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center">
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          isSelected 
+                            ? 'border-pink-600 bg-pink-600 text-white' 
+                            : 'border-slate-300'
+                        }`}>
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Stepper de cantidad para el color elegido */}
+            {selectedColor && (Number(selectedColor.stock) || 0) > 0 && (
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-slate-700 block">Cantidad:</span>
+                  <span className="text-[10px] text-slate-400">Máx: {selectedColor.stock} piezas</span>
+                </div>
+                <div className="flex items-center bg-white rounded-xl border border-slate-200 p-1 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setColorQuantity(Math.max(1, colorQuantity - 1))}
+                    disabled={colorQuantity <= 1}
+                    className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-pink-100 text-slate-700 hover:text-pink-600 font-black flex items-center justify-center disabled:opacity-30 active:scale-95"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="w-10 text-center font-black text-sm text-slate-900">
+                    {colorQuantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setColorQuantity(Math.min(Number(selectedColor.stock) || 1, colorQuantity + 1))}
+                    disabled={colorQuantity >= (Number(selectedColor.stock) || 1)}
+                    className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-pink-100 text-slate-700 hover:text-pink-600 font-black flex items-center justify-center disabled:opacity-30 active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Botón Confirmar Agregar al Carrito */}
+            <button
+              type="button"
+              disabled={!selectedColor || (Number(selectedColor.stock) || 0) <= 0}
+              onClick={() => {
+                if (selectedColor && (Number(selectedColor.stock) || 0) > 0) {
+                  addToCart(colorModalProduct, selectedColor.name, colorQuantity);
+                  setColorModalProduct(null);
+                }
+              }}
+              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-600 hover:to-rose-700 text-white font-black text-sm shadow-lg shadow-pink-500/25 active:scale-98 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>
+                {!selectedColor || (Number(selectedColor.stock) || 0) <= 0 
+                  ? 'Color No Disponible' 
+                  : `Agregar ${colorQuantity > 1 ? `${colorQuantity} ` : ''}(${selectedColor.name}) • $${(colorQuantity * colorModalProduct.salePrice).toFixed(2)}`}
+              </span>
             </button>
 
           </div>
@@ -932,15 +1173,22 @@ export default function MobilePOS({
 
             {/* Resumen de Artículos */}
             <div className="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200 max-h-36 overflow-y-auto">
-              {cart.map(item => (
-                <div key={item.productId} className="flex items-center justify-between text-xs">
+              {cart.map((item, idx) => (
+                <div key={`${item.productId}_${item.color || ''}_${idx}`} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     {item.image ? (
                       <img src={item.image} alt={item.name} className="w-7 h-7 rounded-lg object-cover" />
                     ) : (
                       <span className="text-sm">{item.emoji || '🧸'}</span>
                     )}
-                    <span className="font-bold text-slate-800">{item.quantity}x {item.name}</span>
+                    <div>
+                      <span className="font-bold text-slate-800">{item.quantity}x {item.name}</span>
+                      {item.color && (
+                        <span className="ml-1 text-[10px] font-extrabold px-1.5 py-0.2 rounded-md bg-pink-100 text-pink-700 border border-pink-200">
+                          {item.color}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className="font-extrabold text-slate-900">${(item.quantity * item.price).toFixed(2)}</span>
                 </div>
@@ -1082,8 +1330,8 @@ export default function MobilePOS({
 
             {/* Artículos en Carrito */}
             <div className="py-3 max-h-40 overflow-y-auto space-y-2">
-              {cart.map(item => (
-                <div key={item.productId} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl text-xs">
+              {cart.map((item, idx) => (
+                <div key={`${item.productId}_${item.color || ''}_${idx}`} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl text-xs">
                   <div className="flex items-center gap-2">
                     {item.image ? (
                       <img src={item.image} alt={item.name} className="w-8 h-8 rounded-lg object-cover shadow-sm border border-slate-200" />
@@ -1093,20 +1341,27 @@ export default function MobilePOS({
                       </span>
                     )}
                     <div>
-                      <div className="font-bold text-slate-800">{item.name}</div>
+                      <div className="font-bold text-slate-800 flex items-center gap-1">
+                        <span>{item.name}</span>
+                        {item.color && (
+                          <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-md bg-pink-100 text-pink-700 border border-pink-200">
+                            {item.color}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-slate-500">${item.price.toFixed(2)} c/u</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
-                      onClick={() => updateQuantity(item.productId, -1)}
+                      onClick={() => updateQuantity(item.productId, -1, item.color)}
                       className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-600 active:bg-slate-100"
                     >
                       -
                     </button>
                     <span className="font-black text-slate-900 w-4 text-center">{item.quantity}</span>
                     <button 
-                      onClick={() => updateQuantity(item.productId, 1)}
+                      onClick={() => updateQuantity(item.productId, 1, item.color)}
                       className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-600 active:bg-slate-100"
                     >
                       +

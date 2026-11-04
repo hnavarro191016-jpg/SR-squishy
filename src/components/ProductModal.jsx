@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, Camera, Image as ImageIcon, Trash2, Sparkles, Upload } from 'lucide-react';
+import { X, Check, Camera, Image as ImageIcon, Trash2, Sparkles, Upload, Palette, Plus, Minus, Tag } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { compressImage } from '../utils/imageHelper';
+import { DEFAULT_COLOR_SUGGESTIONS, getColorVisual } from '../utils/colorHelper';
 
 export default function ProductModal({ isOpen, onClose, productToEdit = null }) {
   const { addProductWithStock, updateProduct, deleteProduct, locations, activeLocationId, getStock } = useApp();
@@ -11,6 +12,11 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
   const [images, setImages] = useState([]);
   const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Variantes de Colores y Disponibilidad por Color
+  const [colors, setColors] = useState([]); // [{ name: 'Rosa', stock: '5' }]
+  const [newColorName, setNewColorName] = useState('');
+  const [newColorStock, setNewColorStock] = useState('5');
 
   const [entryMode, setEntryMode] = useState('box'); // 'unit' o 'box' (por caja)
 
@@ -38,6 +44,15 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
       setImages(productToEdit.images || []);
       setSalePrice(productToEdit.salePrice ? productToEdit.salePrice.toString() : '');
       
+      if (Array.isArray(productToEdit.colors) && productToEdit.colors.length > 0) {
+        setColors(productToEdit.colors.map(c => ({
+          name: c.name || '',
+          stock: c.stock !== undefined ? c.stock.toString() : '0'
+        })));
+      } else {
+        setColors([]);
+      }
+
       if (productToEdit.boxCostReference && productToEdit.unitsPerBoxReference) {
         setEntryMode('box');
         setBoxCost(productToEdit.boxCostReference.toString());
@@ -55,6 +70,9 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
       setName('');
       setCategory('');
       setImages([]);
+      setColors([]);
+      setNewColorName('');
+      setNewColorStock('5');
       setBoxCost('');
       setUnitsPerBox('');
       setManualCost('');
@@ -90,6 +108,50 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  // MANEJO DE COLORES Y VARIANTES
+  const handleAddColor = (nameToAdd, stockToAdd = '5') => {
+    const trimmed = (nameToAdd || '').trim();
+    if (!trimmed) return;
+
+    if (colors.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+      alert(`El color "${trimmed}" ya fue agregado a la lista.`);
+      return;
+    }
+
+    const qty = Math.max(0, parseInt(stockToAdd) || 0);
+    const updated = [...colors, { name: trimmed, stock: qty.toString() }];
+    setColors(updated);
+    setNewColorName('');
+    setNewColorStock('5');
+
+    // Auto-actualizar el stock total con la suma de colores
+    const totalQty = updated.reduce((sum, c) => sum + (parseInt(c.stock) || 0), 0);
+    setStock(totalQty.toString());
+  };
+
+  const handleRemoveColor = (index) => {
+    const updated = colors.filter((_, i) => i !== index);
+    setColors(updated);
+    if (updated.length > 0) {
+      const totalQty = updated.reduce((sum, c) => sum + (parseInt(c.stock) || 0), 0);
+      setStock(totalQty.toString());
+    }
+  };
+
+  const handleUpdateColorStock = (index, deltaOrVal, isAbsolute = false) => {
+    const updated = colors.map((c, i) => {
+      if (i === index) {
+        let newStock = isAbsolute ? (parseInt(deltaOrVal) || 0) : ((parseInt(c.stock) || 0) + deltaOrVal);
+        newStock = Math.max(0, newStock);
+        return { ...c, stock: newStock.toString() };
+      }
+      return c;
+    });
+    setColors(updated);
+    const totalQty = updated.reduce((sum, c) => sum + (parseInt(c.stock) || 0), 0);
+    setStock(totalQty.toString());
+  };
+
   // Cálculo de costo unitario
   const calculatedUnitCost = entryMode === 'box'
     ? (parseFloat(unitsPerBox) > 0 ? (parseFloat(boxCost) || 0) / parseFloat(unitsPerBox) : 0)
@@ -110,6 +172,18 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
       return;
     }
 
+    // Filtrar y limpiar colores
+    const cleanColors = colors
+      .map(c => ({
+        name: c.name.trim(),
+        stock: Math.max(0, parseInt(c.stock) || 0)
+      }))
+      .filter(c => c.name.length > 0);
+
+    const effectiveStock = cleanColors.length > 0 
+      ? cleanColors.reduce((sum, c) => sum + c.stock, 0)
+      : (parseFloat(stock) || 0);
+
     setIsSaving(true);
     try {
       if (productToEdit) {
@@ -119,11 +193,12 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
           name: name.trim(),
           category: category.trim() || 'General',
           images,
+          colors: cleanColors,
           costPrice: calculatedUnitCost,
           salePrice: price,
           boxCost: entryMode === 'box' ? parseFloat(boxCost) : 0,
           unitsPerBox: entryMode === 'box' ? parseFloat(unitsPerBox) : 0,
-          newStock: parseFloat(stock) || 0,
+          newStock: effectiveStock,
           locationId: targetLocation
         });
       } else {
@@ -132,9 +207,10 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
           name: name.trim(),
           category: category.trim() || 'General',
           images,
+          colors: cleanColors,
           costPrice: calculatedUnitCost,
           salePrice: price,
-          initialStock: parseFloat(stock) || 0,
+          initialStock: effectiveStock,
           targetLocationId: targetLocation,
           boxCost: entryMode === 'box' ? parseFloat(boxCost) : 0,
           unitsPerBox: entryMode === 'box' ? parseFloat(unitsPerBox) : 0
@@ -272,6 +348,166 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
             />
           </div>
 
+          {/* SECCIÓN DE COLORES / VARIANTES Y DISPONIBILIDAD */}
+          <div className="p-3.5 bg-gradient-to-br from-pink-50/60 to-purple-50/40 rounded-2xl border border-pink-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 rounded-lg bg-pink-500 text-white flex items-center justify-center shadow-xs">
+                  <Palette className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="text-xs font-extrabold text-slate-800 block">
+                    Colores y Disponibilidad {colors.length > 0 && `(${colors.length})`}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Tus clientes podrán elegir el color al comprar
+                  </span>
+                </div>
+              </div>
+
+              {colors.length > 0 && (
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-pink-100 text-pink-700">
+                  {colors.reduce((sum, c) => sum + (parseInt(c.stock) || 0), 0)} pzs en total
+                </span>
+              )}
+            </div>
+
+            {/* Chips rápidos de 1-click para colores comunes */}
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Colores comunes (toca para agregar rápido):
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {DEFAULT_COLOR_SUGGESTIONS.map(col => {
+                  const alreadyAdded = colors.some(c => c.name.toLowerCase() === col.name.toLowerCase());
+                  return (
+                    <button
+                      key={col.name}
+                      type="button"
+                      onClick={() => handleAddColor(col.name, '5')}
+                      disabled={alreadyAdded}
+                      className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                        alreadyAdded
+                          ? 'bg-slate-100 text-slate-400 border border-slate-200 opacity-50 cursor-not-allowed'
+                          : 'bg-white hover:bg-pink-100 text-slate-700 hover:text-pink-700 border border-slate-200 shadow-2xs active:scale-95'
+                      }`}
+                    >
+                      <span>{col.emoji}</span>
+                      <span>{col.name}</span>
+                      {alreadyAdded && <span className="text-[9px]">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Input para color personalizado */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                placeholder="Escribe otro color (ej. Menta, Pastel...)"
+                value={newColorName}
+                onChange={(e) => setNewColorName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddColor(newColorName, newColorStock);
+                  }
+                }}
+                className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-pink-500"
+              />
+              <div className="w-20">
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Pzs"
+                  value={newColorStock}
+                  onChange={(e) => setNewColorStock(e.target.value)}
+                  className="w-full px-2 py-2 bg-white border border-slate-300 rounded-xl text-xs font-black text-slate-900 text-center outline-none focus:border-pink-500"
+                  title="Piezas iniciales"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAddColor(newColorName, newColorStock)}
+                disabled={!newColorName.trim()}
+                className="px-3 py-2 bg-slate-900 hover:bg-pink-600 disabled:opacity-40 text-white font-bold text-xs rounded-xl flex items-center gap-1 active:scale-95 transition-all shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Agregar</span>
+              </button>
+            </div>
+
+            {/* Lista de colores agregados con contador de stock */}
+            {colors.length > 0 ? (
+              <div className="space-y-1.5 pt-1 max-h-48 overflow-y-auto pr-1">
+                {colors.map((c, idx) => {
+                  const visual = getColorVisual(c.name);
+                  const qty = parseInt(c.stock) || 0;
+                  return (
+                    <div 
+                      key={idx}
+                      className="p-2 bg-white rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base">{visual.emoji}</span>
+                        <div className="min-w-0">
+                          <span className="font-extrabold text-xs text-slate-800 block truncate">
+                            {c.name}
+                          </span>
+                          <span className={`text-[10px] font-bold ${qty > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {qty > 0 ? `🟢 ${qty} disponibles` : '🔴 Agotado'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Stepper de cantidad */}
+                        <div className="flex items-center bg-slate-100 rounded-lg border border-slate-200 p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateColorStock(idx, -1)}
+                            className="w-6 h-6 rounded bg-white hover:bg-pink-50 text-slate-600 hover:text-pink-600 flex items-center justify-center font-bold active:scale-90 transition-transform"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            value={c.stock}
+                            onChange={(e) => handleUpdateColorStock(idx, e.target.value, true)}
+                            className="w-10 bg-transparent text-center font-black text-xs text-slate-900 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateColorStock(idx, 1)}
+                            className="w-6 h-6 rounded bg-white hover:bg-pink-50 text-slate-600 hover:text-pink-600 flex items-center justify-center font-bold active:scale-90 transition-transform"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Botón eliminar color */}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveColor(idx)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Quitar este color"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400 italic text-center py-1">
+                Sin variantes de color (se venderá como modelo único si no agregas colores).
+              </p>
+            )}
+          </div>
+
           {/* Modo de Costeo */}
           <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
@@ -379,6 +615,11 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
             <div>
               <label className="text-[11px] font-bold text-slate-500 block mb-1">
                 {productToEdit ? 'Existencia Actual (Piezas)' : 'Piezas a Cargar Inicialmente'}
+                {colors.length > 0 && (
+                  <span className="text-[10px] text-pink-600 font-bold ml-1">
+                    (Auto-calculado de colores: {colors.reduce((sum, c) => sum + (parseInt(c.stock) || 0), 0)} pzs)
+                  </span>
+                )}
               </label>
               <input
                 type="number"
