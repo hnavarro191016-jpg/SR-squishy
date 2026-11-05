@@ -7,6 +7,7 @@ import {
   syncProductToSupabase,
   deleteProductFromSupabase,
   syncOrderToSupabase,
+  updateOrderFieldsInSupabase,
   syncSaleToSupabase,
   syncPurchaseToSupabase,
   syncInventoryKeyToSupabase
@@ -46,6 +47,7 @@ export function AppProvider({ children }) {
   ensureCleanStorageVersion();
 
   const pendingProductIdsRef = useRef(new Set());
+  const pendingOrderIdsRef = useRef(new Set());
   const imagesCacheRef = useRef({});
   const loadedImageIdsRef = useRef(new Set());
   const isFetchingImagesRef = useRef(false);
@@ -225,6 +227,59 @@ export function AppProvider({ children }) {
     });
   };
 
+  const sanitizeOrdersForStorage = (ordersList) => {
+    if (!Array.isArray(ordersList)) return [];
+    return ordersList.map(o => ({
+      ...o,
+      items: Array.isArray(o.items)
+        ? o.items.map(({ image, ...rest }) => ({
+            ...rest,
+            image: typeof image === 'string' && image.startsWith('data:') ? null : (image || null)
+          }))
+        : []
+    }));
+  };
+
+  // Helper para comparar listas de pedidos y evitar re-renders innecesarios
+  const areOrdersEqual = (listA, listB) => {
+    if (!listA || !listB) return listA === listB;
+    if (listA.length !== listB.length) return false;
+    for (let i = 0; i < listA.length; i++) {
+      if (
+        listA[i].id !== listB[i].id || 
+        listA[i].status !== listB[i].status || 
+        listA[i].paymentStatus !== listB[i].paymentStatus ||
+        listA[i].totalAmount !== listB[i].totalAmount
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const applyCloudOrders = (cloudOrders) => {
+    if (!Array.isArray(cloudOrders)) return;
+    setOrders(prev => {
+      const merged = cloudOrders.map(cloudOrd => {
+        if (pendingOrderIdsRef.current.has(cloudOrd.id)) {
+          const localOrd = prev.find(o => o.id === cloudOrd.id);
+          if (localOrd) return localOrd;
+        }
+        return cloudOrd;
+      });
+      prev.forEach(localOrd => {
+        if (pendingOrderIdsRef.current.has(localOrd.id) && !merged.some(o => o.id === localOrd.id)) {
+          merged.unshift(localOrd);
+        }
+      });
+      if (areOrdersEqual(prev, merged)) return prev;
+      try {
+        localStorage.setItem('sq_orders', JSON.stringify(sanitizeOrdersForStorage(merged)));
+      } catch(e) {}
+      return merged;
+    });
+  };
+
   // Sincronización Inicial con Supabase (Carga de datos en tiempo real)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -250,8 +305,7 @@ export function AppProvider({ children }) {
 
         // 3. Pedidos, Ventas, Compras y Ubicaciones
         if (cloudData.orders !== null) {
-          setOrders(cloudData.orders);
-          try { localStorage.setItem('sq_orders', JSON.stringify(cloudData.orders)); } catch(e) {}
+          applyCloudOrders(cloudData.orders);
         }
 
         if (cloudData.sales !== null) {
@@ -281,7 +335,7 @@ export function AppProvider({ children }) {
       .channel('squishy_cloud_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_orders' }, async () => {
         const fresh = await fetchAllFromSupabase(false);
-        if (fresh?.orders !== null && isMounted) setOrders(fresh.orders);
+        if (fresh?.orders !== null && isMounted) applyCloudOrders(fresh.orders);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sq_inventory' }, async () => {
         const fresh = await fetchAllFromSupabase(false);
@@ -307,7 +361,7 @@ export function AppProvider({ children }) {
       localStorage.setItem('sq_inventory', JSON.stringify(inventory));
       localStorage.setItem('sq_purchases', JSON.stringify(purchases));
       localStorage.setItem('sq_sales', JSON.stringify(sales));
-      localStorage.setItem('sq_orders', JSON.stringify(orders));
+      localStorage.setItem('sq_orders', JSON.stringify(sanitizeOrdersForStorage(orders)));
       localStorage.setItem('sq_active_location', activeLocationId);
       localStorage.setItem('sq_whatsapp', whatsappNumber);
     } catch (err) {
@@ -321,60 +375,37 @@ export function AppProvider({ children }) {
     } catch (e) {}
   }, [locations, products, inventory, purchases, sales, orders, activeLocationId, whatsappNumber]);
 
-  // Helper para comparar listas de pedidos y evitar re-renders innecesarios
-  const areOrdersEqual = (listA, listB) => {
-    if (!listA || !listB) return listA === listB;
-    if (listA.length !== listB.length) return false;
-    for (let i = 0; i < listA.length; i++) {
-      if (
-        listA[i].id !== listB[i].id || 
-        listA[i].status !== listB[i].status || 
-        listA[i].paymentStatus !== listB[i].paymentStatus ||
-        listA[i].totalAmount !== listB[i].totalAmount
-      ) {
-        return false;
-      }
-    }
-    return true;
-  };
-
   // FUNCIÓN UNIVERSAL DE AUTO-REFRESH Y SINCRONIZACIÓN DE PEDIDOS
   const refreshOrders = async () => {
-    try {
-      // 1. Cargar pedidos desde LocalStorage (detecta pedidos hechos desde otra pestaña o modo catálogo)
-      const savedOrders = localStorage.getItem('sq_orders');
-      if (savedOrders) {
-        const parsed = JSON.parse(savedOrders);
-        if (Array.isArray(parsed)) {
-          setOrders(prev => areOrdersEqual(prev, parsed) ? prev : parsed);
+    if (!isSupabaseConfigured || !supabase) {
+      try {
+        const savedOrders = localStorage.getItem('sq_orders');
+        if (savedOrders) {
+          const parsed = JSON.parse(savedOrders);
+          if (Array.isArray(parsed)) {
+            setOrders(prev => areOrdersEqual(prev, parsed) ? prev : parsed);
+          }
         }
+      } catch (e) {
+        console.warn('Error al leer pedidos de localStorage:', e);
       }
-    } catch (e) {
-      console.warn('Error al leer pedidos de localStorage:', e);
+      return;
     }
 
-    // 2. Si Supabase está configurado en la nube, traer los pedidos y existencias más frescos (consulta ligera ~7 KB)
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const cloudData = await fetchAllFromSupabase(false);
-        if (cloudData && cloudData.orders !== null) {
-          setOrders(prev => {
-            if (areOrdersEqual(prev, cloudData.orders)) return prev;
-            try {
-              localStorage.setItem('sq_orders', JSON.stringify(cloudData.orders));
-            } catch(e) {}
-            return cloudData.orders;
-          });
-        }
-        if (cloudData && cloudData.inventory !== null) {
-          applyCloudInventory(cloudData.inventory);
-        }
-        if (cloudData && cloudData.products !== null) {
-          applyCloudProducts(cloudData.products);
-        }
-      } catch (err) {
-        console.warn('Error al sincronizar pedidos de Supabase:', err);
+    // Si Supabase está configurado en la nube, traer los pedidos y existencias más frescos
+    try {
+      const cloudData = await fetchAllFromSupabase(false);
+      if (cloudData && cloudData.orders !== null) {
+        applyCloudOrders(cloudData.orders);
       }
+      if (cloudData && cloudData.inventory !== null) {
+        applyCloudInventory(cloudData.inventory);
+      }
+      if (cloudData && cloudData.products !== null) {
+        applyCloudProducts(cloudData.products);
+      }
+    } catch (err) {
+      console.warn('Error al sincronizar pedidos de Supabase:', err);
     }
   };
 
@@ -926,11 +957,12 @@ export function AppProvider({ children }) {
         productId: item.productId,
         name: item.name || (prod ? prod.name : 'Squishy'),
         color: item.color || '',
-        image: item.image || (prod?.images?.[0] || null),
+        image: null,
         emoji: prod?.emoji || '🧸',
         quantity: item.quantity,
         unitCost,
         unitPrice,
+        price: unitPrice,
         subtotal,
         profit
       };
@@ -1021,20 +1053,56 @@ export function AppProvider({ children }) {
       return prevProds;
     });
 
-    setOrders(prev => [newOrder, ...prev]);
-    syncOrderToSupabase(newOrder);
+    pendingOrderIdsRef.current.add(newOrder.id);
+    setOrders(prev => {
+      const updatedList = [newOrder, ...prev];
+      try {
+        localStorage.setItem('sq_orders', JSON.stringify(sanitizeOrdersForStorage(updatedList)));
+      } catch(e) {}
+      return updatedList;
+    });
+
+    syncOrderToSupabase(newOrder).finally(() => {
+      setTimeout(() => {
+        pendingOrderIdsRef.current.delete(newOrder.id);
+      }, 4000);
+    });
 
     return { success: true, order: newOrder };
   };
 
   // 2. AVANZAR ESTADO DEL PEDIDO (Preparado, Por Entregar, etc.)
-  const advanceOrderStatus = (orderId, nextStatus) => {
+  const advanceOrderStatus = async (orderId, nextStatus) => {
+    const currentOrder = orders.find(o => o.id === orderId);
+    if (!currentOrder) return;
+
+    const resolvedStatus = nextStatus || (
+      currentOrder.status === 'nuevo' ? 'preparado' :
+      currentOrder.status === 'preparado' ? 'por_entregar' :
+      'por_entregar'
+    );
+
+    const updatedOrder = { ...currentOrder, status: resolvedStatus };
+    pendingOrderIdsRef.current.add(orderId);
+
     setOrders(prev => {
-      const updatedList = prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o);
-      const target = updatedList.find(o => o.id === orderId);
-      if (target) syncOrderToSupabase(target);
+      const updatedList = prev.map(o => o.id === orderId ? updatedOrder : o);
+      try {
+        localStorage.setItem('sq_orders', JSON.stringify(sanitizeOrdersForStorage(updatedList)));
+      } catch(e) {}
       return updatedList;
     });
+
+    try {
+      const res = await updateOrderFieldsInSupabase(orderId, { status: resolvedStatus });
+      if (res?.error) {
+        await syncOrderToSupabase(updatedOrder);
+      }
+    } finally {
+      setTimeout(() => {
+        pendingOrderIdsRef.current.delete(orderId);
+      }, 4000);
+    }
   };
 
   // 3. COMPLETAR Y COBRAR PEDIDO (El cliente recibe y paga -> se registra como venta en Dashboard)
@@ -1068,16 +1136,39 @@ export function AppProvider({ children }) {
     syncSaleToSupabase(newSale);
 
     // Marcar el pedido como completado
+    const updatedOrder = {
+      ...order,
+      status: 'completado',
+      paymentStatus: 'pagado',
+      paymentMethod,
+      completedAt: formattedDate
+    };
+
+    pendingOrderIdsRef.current.add(orderId);
     setOrders(prev => {
-      const updatedList = prev.map(o => 
-        o.id === orderId 
-          ? { ...o, status: 'completado', paymentStatus: 'pagado', paymentMethod, completedAt: formattedDate } 
-          : o
-      );
-      const target = updatedList.find(o => o.id === orderId);
-      if (target) syncOrderToSupabase(target);
+      const updatedList = prev.map(o => o.id === orderId ? updatedOrder : o);
+      try {
+        localStorage.setItem('sq_orders', JSON.stringify(sanitizeOrdersForStorage(updatedList)));
+      } catch(e) {}
       return updatedList;
     });
+
+    (async () => {
+      try {
+        const res = await updateOrderFieldsInSupabase(orderId, {
+          status: 'completado',
+          payment_status: 'pagado',
+          payment_method: paymentMethod
+        });
+        if (res?.error) {
+          await syncOrderToSupabase(updatedOrder);
+        }
+      } finally {
+        setTimeout(() => {
+          pendingOrderIdsRef.current.delete(orderId);
+        }, 4000);
+      }
+    })();
 
     return { success: true, sale: newSale };
   };
@@ -1130,12 +1221,28 @@ export function AppProvider({ children }) {
       });
     }
 
+    const updatedOrder = { ...order, status: 'cancelado' };
+    pendingOrderIdsRef.current.add(orderId);
     setOrders(prev => {
-      const updatedList = prev.map(o => o.id === orderId ? { ...o, status: 'cancelado' } : o);
-      const target = updatedList.find(o => o.id === orderId);
-      if (target) syncOrderToSupabase(target);
+      const updatedList = prev.map(o => o.id === orderId ? updatedOrder : o);
+      try {
+        localStorage.setItem('sq_orders', JSON.stringify(sanitizeOrdersForStorage(updatedList)));
+      } catch(e) {}
       return updatedList;
     });
+
+    (async () => {
+      try {
+        const res = await updateOrderFieldsInSupabase(orderId, { status: 'cancelado' });
+        if (res?.error) {
+          await syncOrderToSupabase(updatedOrder);
+        }
+      } finally {
+        setTimeout(() => {
+          pendingOrderIdsRef.current.delete(orderId);
+        }, 4000);
+      }
+    })();
 
     return { success: true };
   };

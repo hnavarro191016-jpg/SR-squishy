@@ -207,10 +207,22 @@ export async function deleteProductFromSupabase(productId) {
   }
 }
 
+function stripItemImages(items) {
+  if (!Array.isArray(items)) return [];
+  return items.map(item => {
+    const { image, ...rest } = item || {};
+    return {
+      ...rest,
+      image: typeof image === 'string' && image.startsWith('data:') ? null : (image || null)
+    };
+  });
+}
+
 export async function syncOrderToSupabase(order) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.from('sq_orders').upsert({
+    const lightItems = stripItemImages(order.items);
+    const { error } = await supabase.from('sq_orders').upsert({
       id: order.id,
       folio: order.folio,
       date: order.date,
@@ -221,7 +233,7 @@ export async function syncOrderToSupabase(order) {
       delivery_location_name: order.deliveryLocationName,
       delivery_type: order.deliveryType,
       delivery_notes: order.deliveryNotes,
-      items: order.items,
+      items: lightItems,
       total_amount: order.totalAmount,
       total_cost: order.totalCost,
       total_profit: order.totalProfit,
@@ -230,14 +242,35 @@ export async function syncOrderToSupabase(order) {
       payment_status: order.paymentStatus,
       payment_method: order.paymentMethod
     });
+    if (error) {
+      console.warn('Error upsert sq_orders:', error);
+    }
   } catch (e) {
     console.warn('Sync order to Supabase failed:', e);
   }
 }
 
+export async function updateOrderFieldsInSupabase(orderId, fields) {
+  if (!isSupabaseConfigured || !supabase || !orderId) return { error: 'Not configured' };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { error } = await supabase
+        .from('sq_orders')
+        .update(fields)
+        .eq('id', orderId);
+      if (!error) return { success: true };
+      console.warn(`Intento ${attempt + 1} falló al actualizar pedido ${orderId}:`, error);
+    } catch (e) {
+      console.warn(`Excepción al actualizar pedido ${orderId}:`, e);
+    }
+  }
+  return { error: 'Failed after retries' };
+}
+
 export async function syncSaleToSupabase(sale) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
+    const lightItems = stripItemImages(sale.items);
     await supabase.from('sq_sales').upsert({
       id: sale.id,
       order_id: sale.orderId || null,
@@ -245,7 +278,7 @@ export async function syncSaleToSupabase(sale) {
       timestamp: sale.timestamp,
       location_id: sale.locationId,
       location_name: sale.locationName,
-      items: sale.items,
+      items: lightItems,
       total_amount: sale.totalAmount,
       total_cost: sale.totalCost,
       total_profit: sale.totalProfit,

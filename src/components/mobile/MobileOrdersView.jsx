@@ -130,7 +130,8 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
     text += `🛍️ *ARTÍCULOS ENTREGADOS:*\n`;
     (order.items || []).forEach(item => {
       const colorTxt = item.color ? ` (Color: *${item.color}*)` : '';
-      text += `• *${item.quantity}x* ${item.name}${colorTxt} — $${(item.quantity * item.price).toFixed(2)} MXN\n`;
+      const unitP = Number(item.unitPrice ?? item.price ?? 0);
+      text += `• *${item.quantity}x* ${item.name}${colorTxt} — $${(item.quantity * unitP).toFixed(2)} MXN\n`;
     });
     text += `------------------------------------\n`;
     text += `💰 *TOTAL PAGADO: $${total.toFixed(2)} MXN*\n`;
@@ -353,7 +354,7 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
                         )}
                       </div>
                       <span className="font-bold text-slate-700 shrink-0">
-                        ${(item.quantity * item.price).toFixed(2)}
+                        ${(item.quantity * Number(item.unitPrice ?? item.price ?? 0)).toFixed(2)}
                       </span>
                     </div>
                   ))}
@@ -364,6 +365,55 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
                     </div>
                   )}
                 </div>
+
+                {/* Selector directo de estatus (barra de pasos interactiva) */}
+                {!isCompleted && !isCancelled && (
+                  <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => advanceOrderStatus(order.id, 'nuevo')}
+                      className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition-all ${
+                        order.status === 'nuevo'
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-white/60'
+                      }`}
+                    >
+                      1. Recibido
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => advanceOrderStatus(order.id, 'preparado')}
+                      className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition-all ${
+                        order.status === 'preparado'
+                          ? 'bg-orange-500 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-white/60'
+                      }`}
+                    >
+                      2. Preparado
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => advanceOrderStatus(order.id, 'por_entregar')}
+                      className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition-all ${
+                        order.status === 'por_entregar'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-white/60'
+                      }`}
+                    >
+                      3. Listo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderToComplete(order);
+                        setCashReceived(order.totalAmount.toString());
+                      }}
+                      className="py-1.5 px-1 rounded-lg text-[10px] font-black bg-emerald-600 text-white shadow-xs active:scale-95 transition-all"
+                    >
+                      💲 Cobrar
+                    </button>
+                  </div>
+                )}
 
                 {/* Resumen de Pago */}
                 <div className="flex items-center justify-between pt-1">
@@ -390,7 +440,8 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
                     <div className="flex items-center gap-1.5">
                       {order.status === 'nuevo' && (
                         <button
-                          onClick={() => advanceOrderStatus(order.id)}
+                          type="button"
+                          onClick={() => advanceOrderStatus(order.id, 'preparado')}
                           className="px-3 py-1.5 rounded-xl bg-amber-500 text-white font-extrabold text-xs shadow-xs active:scale-95 transition-all flex items-center gap-1"
                         >
                           <Package className="w-3.5 h-3.5" />
@@ -400,7 +451,8 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
 
                       {order.status === 'preparado' && (
                         <button
-                          onClick={() => advanceOrderStatus(order.id)}
+                          type="button"
+                          onClick={() => advanceOrderStatus(order.id, 'por_entregar')}
                           className="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-extrabold text-xs shadow-xs active:scale-95 transition-all flex items-center gap-1"
                         >
                           <Truck className="w-3.5 h-3.5" />
@@ -410,6 +462,7 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
 
                       {order.status === 'por_entregar' && (
                         <button
+                          type="button"
                           onClick={() => {
                             setOrderToComplete(order);
                             setCashReceived(order.totalAmount.toString());
@@ -422,6 +475,7 @@ export default function MobileOrdersView({ onOpenOrderCapture }) {
                       )}
 
                       <button
+                        type="button"
                         onClick={() => {
                           if (window.confirm(`¿Seguro que deseas cancelar el pedido ${order.folio}? Las piezas volverán al inventario.`)) {
                             cancelOrder(order.id);

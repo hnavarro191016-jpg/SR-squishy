@@ -618,24 +618,27 @@ export default function OrdersManager() {
 
                   {/* Centro: Squishys en mini-pills */}
                   <div className="flex-1 flex flex-wrap items-center gap-1.5">
-                    {order.items.map((item, idx) => (
-                      <span 
-                        key={idx}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-bold border border-slate-200"
-                      >
-                        {item.image ? (
-                          <img src={item.image} alt={item.name} className="w-4 h-4 rounded object-cover" />
-                        ) : (
-                          <span>{item.emoji || '🧸'}</span>
-                        )}
-                        <span>{item.quantity}x {item.name}</span>
-                        {item.color && (
-                          <span className="text-[10px] font-extrabold text-pink-700 bg-pink-100/80 px-1 rounded">
-                            {item.color}
-                          </span>
-                        )}
-                      </span>
-                    ))}
+                    {order.items.map((item, idx) => {
+                      const prodImg = products.find(p => p.id === item.productId)?.images?.[0] || item.image;
+                      return (
+                        <span 
+                          key={idx}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-bold border border-slate-200"
+                        >
+                          {prodImg ? (
+                            <img src={prodImg} alt={item.name} className="w-4 h-4 rounded object-cover" />
+                          ) : (
+                            <span>{item.emoji || '🧸'}</span>
+                          )}
+                          <span>{item.quantity}x {item.name}</span>
+                          {item.color && (
+                            <span className="text-[10px] font-extrabold text-pink-700 bg-pink-100/80 px-1 rounded">
+                              {item.color}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
                     {order.deliveryNotes && (
                       <span 
                         className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg italic truncate max-w-xs" 
@@ -660,10 +663,49 @@ export default function OrdersManager() {
                     </div>
 
                     {/* Botones de Acción Operativa Compactos */}
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {!isCompleted && !isCancelled && (
+                        <div className="hidden lg:flex items-center bg-slate-100 p-0.5 rounded-xl gap-0.5 mr-1">
+                          <button
+                            type="button"
+                            onClick={() => advanceOrderStatus(order.id, 'nuevo')}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all ${
+                              order.status === 'nuevo'
+                                ? 'bg-amber-500 text-white shadow-xs'
+                                : 'text-slate-600 hover:bg-white'
+                            }`}
+                          >
+                            1. Recibido
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => advanceOrderStatus(order.id, 'preparado')}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all ${
+                              order.status === 'preparado'
+                                ? 'bg-orange-500 text-white shadow-xs'
+                                : 'text-slate-600 hover:bg-white'
+                            }`}
+                          >
+                            2. Preparado
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => advanceOrderStatus(order.id, 'por_entregar')}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all ${
+                              order.status === 'por_entregar'
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:bg-white'
+                            }`}
+                          >
+                            3. Listo
+                          </button>
+                        </div>
+                      )}
+
                       {order.status === 'nuevo' && (
                         <>
                           <button
+                            type="button"
                             onClick={() => advanceOrderStatus(order.id, 'preparado')}
                             className="px-2.5 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs flex items-center gap-1 shadow-sm transition-all active:scale-95"
                             title="Comenzar a empacar pedido"
@@ -672,6 +714,16 @@ export default function OrdersManager() {
                             <span>Empacar</span>
                           </button>
                           <button
+                            type="button"
+                            onClick={() => setSelectedOrderForPayment(order)}
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1 shadow-sm transition-all active:scale-95"
+                            title="Cobrar directamente"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Cobrar</span>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => sendWhatsAppUpdate(order)}
                             className="p-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
                             title="Confirmar por WhatsApp"
@@ -684,6 +736,7 @@ export default function OrdersManager() {
                       {order.status === 'preparado' && (
                         <>
                           <button
+                            type="button"
                             onClick={() => advanceOrderStatus(order.id, 'por_entregar')}
                             className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs flex items-center gap-1 shadow-sm transition-all active:scale-95"
                             title="Marcar como listo en mostrador"
@@ -692,6 +745,16 @@ export default function OrdersManager() {
                             <span>Listo</span>
                           </button>
                           <button
+                            type="button"
+                            onClick={() => setSelectedOrderForPayment(order)}
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1 shadow-sm transition-all active:scale-95"
+                            title="Cobrar directamente"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Cobrar</span>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => sendWhatsAppUpdate(order)}
                             className="p-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
                             title="Avisar que está listo por WhatsApp"
@@ -704,6 +767,7 @@ export default function OrdersManager() {
                       {order.status === 'por_entregar' && (
                         <>
                           <button
+                            type="button"
                             onClick={() => setSelectedOrderForPayment(order)}
                             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-black text-xs flex items-center gap-1 shadow-sm shadow-emerald-500/20 hover:from-emerald-600 hover:to-teal-700 transition-all active:scale-95"
                             title="Cobrar entrega y registrar en ventas"
@@ -712,6 +776,7 @@ export default function OrdersManager() {
                             <span>Cobrar ${order.totalAmount.toFixed(0)}</span>
                           </button>
                           <button
+                            type="button"
                             onClick={() => sendWhatsAppUpdate(order)}
                             className="p-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
                             title="Contactar al cliente por WhatsApp"
@@ -898,6 +963,51 @@ export default function OrdersManager() {
 
                 {/* Botones de Acción de Tarjeta (Compactos y tipo Pill) */}
                 <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
+                  {!isCompleted && !isCancelled && (
+                    <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => advanceOrderStatus(order.id, 'nuevo')}
+                        className={`py-1 px-1 rounded-lg text-[10px] font-black transition-all ${
+                          order.status === 'nuevo'
+                            ? 'bg-amber-500 text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-white'
+                        }`}
+                      >
+                        1. Recibido
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => advanceOrderStatus(order.id, 'preparado')}
+                        className={`py-1 px-1 rounded-lg text-[10px] font-black transition-all ${
+                          order.status === 'preparado'
+                            ? 'bg-orange-500 text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-white'
+                        }`}
+                      >
+                        2. Preparado
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => advanceOrderStatus(order.id, 'por_entregar')}
+                        className={`py-1 px-1 rounded-lg text-[10px] font-black transition-all ${
+                          order.status === 'por_entregar'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-white'
+                        }`}
+                      >
+                        3. Listo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOrderForPayment(order)}
+                        className="py-1 px-1 rounded-lg text-[10px] font-black bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 transition-all"
+                      >
+                        💲 Cobrar
+                      </button>
+                    </div>
+                  )}
+
                   {order.status === 'nuevo' && (
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
