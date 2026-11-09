@@ -448,16 +448,6 @@ export function AppProvider({ children }) {
     };
   }, [isSupabaseConfigured]);
 
-  // 3. Heartbeat de auto-refresco cíclico cada 4 segundos
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        refreshOrders();
-      }
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [isSupabaseConfigured]);
 
   // Auto-sincronización de IDs entre compras y catálogo
   useEffect(() => {
