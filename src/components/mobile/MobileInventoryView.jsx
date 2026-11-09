@@ -21,6 +21,7 @@ export default function MobileInventoryView({ onEditProduct }) {
     locations, 
     activeLocationId, 
     getStock, 
+    getTotalStock,
     setQuickStock, 
     transferStock,
     sales 
@@ -111,7 +112,7 @@ export default function MobileInventoryView({ onEditProduct }) {
         {filteredProducts.map(prod => {
           const storeStock = getStock('loc-2', prod.id);
           const warehouseStock = getStock('loc-1', prod.id);
-          const totalStock = storeStock + warehouseStock;
+          const totalStock = getTotalStock(prod.id);
 
           return (
             <div

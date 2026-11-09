@@ -14,7 +14,7 @@ import {
 import { useApp } from '../context/AppContext';
 
 export default function Dashboard({ onGoToPOS }) {
-  const { sales, products, locations, inventory, getStock } = useApp();
+  const { sales, products, locations, inventory, getStock, getTotalStock } = useApp();
 
   // Métricas Globales
   const metrics = useMemo(() => {
@@ -40,12 +40,10 @@ export default function Dashboard({ onGoToPOS }) {
     let totalStockUnits = 0;
 
     products.forEach(p => {
-      locations.forEach(loc => {
-        const qty = getStock(loc.id, p.id);
-        totalStockUnits += qty;
-        inventoryCostValue += qty * p.costPrice;
-        inventoryRetailValue += qty * p.salePrice;
-      });
+      const qty = getTotalStock(p.id);
+      totalStockUnits += qty;
+      inventoryCostValue += qty * p.costPrice;
+      inventoryRetailValue += qty * p.salePrice;
     });
 
     const potentialInventoryProfit = inventoryRetailValue - inventoryCostValue;

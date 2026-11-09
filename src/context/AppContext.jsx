@@ -482,66 +482,54 @@ export function AppProvider({ children }) {
 
   // CÁLCULO INTELIGENTE DE STOCK EN EXISTENCIA
   const getStock = (locationId, productId) => {
-    // 1. Stock directo en esta ubicación (si es positivo)
-    const directKey = `${locationId}_${productId}`;
-    if (typeof inventory[directKey] === 'number' && inventory[directKey] > 0) {
-      return inventory[directKey];
-    }
-
-    // 2. Si en esta ubicación es 0 o no existe, buscar si hay existencias en cualquier otro punto (ej. Punto de Venta Principal o Bodega)
-    const otherKeys = Object.keys(inventory).filter(
-      k => k.endsWith(`_${productId}`) && typeof inventory[k] === 'number' && inventory[k] > 0
-    );
-    if (otherKeys.length > 0) {
-      return otherKeys.reduce((sum, k) => sum + inventory[k], 0);
-    }
-
-    // Si existe la llave directa en 0 y ninguna otra ubicación tiene stock, es 0
-    if (typeof inventory[directKey] === 'number') {
-      return 0;
-    }
-
     const prod = products.find(p => p.id === productId);
 
-    // 3. Stock inicial guardado en el producto
-    if (prod && typeof prod.initialStock === 'number' && prod.initialStock > 0) {
-      return prod.initialStock;
+    // 1. Si el producto tiene variantes de color, la existencia real es la suma de los colores disponibles
+    if (prod && Array.isArray(prod.colors) && prod.colors.length > 0) {
+      return prod.colors.reduce((sum, c) => sum + Math.max(0, Number(c.stock) || 0), 0);
     }
 
-    // 4. Fallback Infalible: Compras registradas menos Ventas y Pedidos activos
-    if (prod) {
-      const prodName = (prod.name || '').trim().toLowerCase();
+    // 2. Si no tiene colores, buscar la existencia directa en la ubicación solicitada
+    if (locationId) {
+      const directKey = `${locationId}_${productId}`;
+      if (typeof inventory[directKey] === 'number') {
+        return Math.max(0, inventory[directKey]);
+      }
+      // Si la llave no existe en esta ubicación, pero el producto ya tiene existencias en otras:
+      const hasOtherKeys = Object.keys(inventory).some(k => k.endsWith(`_${productId}`));
+      if (hasOtherKeys) {
+        return 0; // En esta ubicación no hay stock asignado
+      }
+    }
 
-      // Total de compras
-      const totalPurchased = purchases
-        .filter(pur => pur.productId === productId || ((pur.productName || '').trim().toLowerCase() === prodName))
-        .reduce((sum, pur) => sum + (Number(pur.totalUnits) || 0), 0);
-
-      // Total de ventas directas
-      const totalSold = sales
-        .flatMap(s => s.items || [])
-        .filter(item => item.productId === productId || ((item.name || '').trim().toLowerCase() === prodName))
-        .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-
-      // Restar pedidos activos que ya apartaron mercancía (nuevo, preparado, por_entregar)
-      const totalReserved = orders
-        .filter(o => ['nuevo', 'preparado', 'por_entregar'].includes(o.status))
-        .flatMap(o => o.items || [])
-        .filter(item => item.productId === productId || ((item.name || '').trim().toLowerCase() === prodName))
-        .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-
-      const calculated = totalPurchased - totalSold - totalReserved;
-      return Math.max(0, calculated);
+    // 3. Fallback inicial únicamente si el producto nunca ha tenido registros en inventory
+    if (prod && typeof prod.initialStock === 'number') {
+      return Math.max(0, prod.initialStock);
     }
 
     return 0;
   };
 
   const getTotalStock = (productId) => {
-    return Math.max(
-      locations.reduce((sum, loc) => sum + (inventory[`${loc.id}_${productId}`] || 0), 0),
-      getStock(activeLocationId, productId)
-    );
+    const prod = products.find(p => p.id === productId);
+
+    // 1. Si tiene variantes de color, la suma de los colores es el stock total disponible
+    if (prod && Array.isArray(prod.colors) && prod.colors.length > 0) {
+      return prod.colors.reduce((sum, c) => sum + Math.max(0, Number(c.stock) || 0), 0);
+    }
+
+    // 2. Si no tiene colores, sumar las existencias de todos los almacenes/puntos en inventory
+    const productKeys = Object.keys(inventory).filter(k => k.endsWith(`_${productId}`));
+    if (productKeys.length > 0) {
+      return productKeys.reduce((sum, k) => sum + Math.max(0, Number(inventory[k]) || 0), 0);
+    }
+
+    // 3. Fallback inicial si aún no se ha creado ninguna llave de inventario
+    if (prod && typeof prod.initialStock === 'number') {
+      return Math.max(0, prod.initialStock);
+    }
+
+    return 0;
   };
 
   // Ajuste rápido de existencias
@@ -553,9 +541,35 @@ export function AppProvider({ children }) {
         ...prev,
         [key]: qty
       };
+      if (qty === 0) {
+        // Si se establece en 0, asegurarse de no dejar llaves con existencias fantasma
+        Object.keys(updated).forEach(k => {
+          if (k.endsWith(`_${productId}`)) {
+            updated[k] = 0;
+            syncInventoryKeyToSupabase(k, 0);
+          }
+        });
+      }
       try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
       return updated;
     });
+
+    // Si el producto tiene colores y se establece en 0, sincronizar colores a 0
+    const prod = products.find(p => p.id === productId);
+    if (prod && Array.isArray(prod.colors) && prod.colors.length > 0) {
+      if (qty === 0) {
+        const zeroColors = prod.colors.map(c => ({ ...c, stock: 0 }));
+        const updatedProd = { ...prod, colors: zeroColors, initialStock: 0 };
+        setProducts(prev => prev.map(p => p.id === productId ? updatedProd : p));
+        syncProductToSupabase(updatedProd);
+      } else if (prod.colors.length === 1) {
+        const updatedColors = [{ ...prod.colors[0], stock: qty }];
+        const updatedProd = { ...prod, colors: updatedColors, initialStock: qty };
+        setProducts(prev => prev.map(p => p.id === productId ? updatedProd : p));
+        syncProductToSupabase(updatedProd);
+      }
+    }
+
     await syncInventoryKeyToSupabase(key, qty);
   };
 
@@ -612,16 +626,14 @@ export function AppProvider({ children }) {
       return updated;
     });
 
-    if (qty > 0) {
-      setInventory(prev => {
-        const updated = {
-          ...prev,
-          [key]: qty
-        };
-        try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
-        return updated;
-      });
-    }
+    setInventory(prev => {
+      const updated = {
+        ...prev,
+        [key]: qty
+      };
+      try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
+      return updated;
+    });
 
     // 2. Sincronizar en orden estricto con Supabase: PRIMERO el producto, LUEGO el inventario
     try {
@@ -631,9 +643,7 @@ export function AppProvider({ children }) {
         await new Promise(r => setTimeout(r, 600));
         await syncProductToSupabase(newProd);
       }
-      if (qty > 0) {
-        await syncInventoryKeyToSupabase(key, qty);
-      }
+      await syncInventoryKeyToSupabase(key, qty);
     } catch (syncErr) {
       console.warn('Error sincronizando nuevo producto a Supabase:', syncErr);
     } finally {
@@ -649,6 +659,14 @@ export function AppProvider({ children }) {
     const validImages = Array.isArray(images) ? images : (existingProd.images || []);
     const validColors = colors !== undefined ? (Array.isArray(colors) ? colors : []) : (existingProd.colors || []);
 
+    const colorsSum = validColors.length > 0
+      ? validColors.reduce((sum, c) => sum + Math.max(0, Number(c.stock) || 0), 0)
+      : undefined;
+
+    const resolvedInitialStock = colorsSum !== undefined
+      ? colorsSum
+      : (newStock !== undefined ? Math.max(0, Number(newStock) || 0) : existingProd.initialStock);
+
     const updatedProd = {
       ...existingProd,
       id,
@@ -660,6 +678,7 @@ export function AppProvider({ children }) {
       imageSignature: computeImagesSignature(validImages),
       costPrice: Number(parseFloat(costPrice) || 0),
       salePrice: Number(parseFloat(salePrice) || 0),
+      initialStock: resolvedInitialStock,
       minStock: existingProd.minStock || 5,
       boxCostReference: Number(boxCost) || 0,
       unitsPerBoxReference: Number(unitsPerBox) || 0
@@ -695,6 +714,15 @@ export function AppProvider({ children }) {
             ...prev,
             [key]: qty
           };
+          // Si el nuevo stock es 0 (o la suma de colores es 0), limpiar existencias en todas las sedes
+          if (qty === 0 || (colorsSum !== undefined && colorsSum === 0)) {
+            Object.keys(updated).forEach(k => {
+              if (k.endsWith(`_${id}`)) {
+                updated[k] = 0;
+                syncInventoryKeyToSupabase(k, 0);
+              }
+            });
+          }
           try { localStorage.setItem('sq_inventory', JSON.stringify(updated)); } catch(e) {}
           return updated;
         });
@@ -869,20 +897,23 @@ export function AppProvider({ children }) {
           ? updated[directKey] 
           : getStock(locationId, item.productId);
         
-        updated[directKey] = Math.max(0, currentDirect - item.quantity);
+        const deductFromDirect = Math.min(currentDirect, item.quantity);
+        updated[directKey] = Math.max(0, currentDirect - deductFromDirect);
         syncInventoryKeyToSupabase(directKey, updated[directKey]);
 
-        // Descontar también de otros almacenes para no dejar unidades fantasma
-        let remainder = item.quantity;
-        Object.keys(updated).forEach(k => {
-          if (k.endsWith(`_${item.productId}`) && k !== directKey && typeof updated[k] === 'number' && updated[k] > 0) {
-            const avail = updated[k];
-            const deduct = Math.min(avail, remainder);
-            updated[k] = avail - deduct;
-            remainder -= deduct;
-            syncInventoryKeyToSupabase(k, updated[k]);
-          }
-        });
+        // Si la sede actual no tenía suficiente, descontar el remanente de otros almacenes
+        let remainder = item.quantity - deductFromDirect;
+        if (remainder > 0) {
+          Object.keys(updated).forEach(k => {
+            if (k.endsWith(`_${item.productId}`) && k !== directKey && typeof updated[k] === 'number' && updated[k] > 0 && remainder > 0) {
+              const avail = updated[k];
+              const deduct = Math.min(avail, remainder);
+              updated[k] = avail - deduct;
+              remainder -= deduct;
+              syncInventoryKeyToSupabase(k, updated[k]);
+            }
+          });
+        }
       });
       return updated;
     });
@@ -1005,20 +1036,23 @@ export function AppProvider({ children }) {
           ? updated[directKey] 
           : getStock(deliveryLocationId, item.productId);
 
-        updated[directKey] = Math.max(0, currentDirect - item.quantity);
+        const deductFromDirect = Math.min(currentDirect, item.quantity);
+        updated[directKey] = Math.max(0, currentDirect - deductFromDirect);
         syncInventoryKeyToSupabase(directKey, updated[directKey]);
 
-        // Descontar también de otros almacenes para no dejar unidades fantasma
-        let remainder = item.quantity;
-        Object.keys(updated).forEach(k => {
-          if (k.endsWith(`_${item.productId}`) && k !== directKey && typeof updated[k] === 'number' && updated[k] > 0) {
-            const avail = updated[k];
-            const deduct = Math.min(avail, remainder);
-            updated[k] = avail - deduct;
-            remainder -= deduct;
-            syncInventoryKeyToSupabase(k, updated[k]);
-          }
-        });
+        // Si la sede actual no tenía suficiente, descontar el remanente de otros almacenes
+        let remainder = item.quantity - deductFromDirect;
+        if (remainder > 0) {
+          Object.keys(updated).forEach(k => {
+            if (k.endsWith(`_${item.productId}`) && k !== directKey && typeof updated[k] === 'number' && updated[k] > 0 && remainder > 0) {
+              const avail = updated[k];
+              const deduct = Math.min(avail, remainder);
+              updated[k] = avail - deduct;
+              remainder -= deduct;
+              syncInventoryKeyToSupabase(k, updated[k]);
+            }
+          });
+        }
       });
       return updated;
     });

@@ -115,6 +115,7 @@ export default function MobilePOS({
     activeLocationId, 
     setActiveLocationId, 
     getStock, 
+    getTotalStock,
     setQuickStock,
     recordSale,
     createOrder,
@@ -200,6 +201,9 @@ export default function MobilePOS({
   }, [cart]);
 
   const handleInitiateAddToCart = (product) => {
+    const available = isCustomerView ? getTotalStock(product.id) : getStock(activeLocationId, product.id);
+    if (available <= 0) return;
+
     if (Array.isArray(product.colors) && product.colors.length > 0) {
       setColorModalProduct(product);
       const firstInStock = product.colors.find(c => (Number(c.stock) || 0) > 0) || product.colors[0];
@@ -211,7 +215,7 @@ export default function MobilePOS({
   };
 
   const addToCart = (product, chosenColorName = null, chosenQty = 1) => {
-    const totalStock = getStock(activeLocationId, product.id);
+    const totalStock = isCustomerView ? getTotalStock(product.id) : getStock(activeLocationId, product.id);
     let maxAvail = totalStock;
 
     if (chosenColorName && Array.isArray(product.colors)) {
@@ -226,7 +230,7 @@ export default function MobilePOS({
     const currentQtyInCart = existing ? existing.quantity : 0;
 
     if (currentQtyInCart + chosenQty > maxAvail) {
-      alert(`¡Solo quedan ${maxAvail} piezas disponibles${chosenColorName ? ` en color "${chosenColorName}"` : ''} en ${currentLocation.name}!`);
+      alert(`¡Solo quedan ${maxAvail} piezas disponibles${chosenColorName ? ` en color "${chosenColorName}"` : ''}${isCustomerView ? '' : ` en ${currentLocation.name}`}!`);
       return;
     }
 
@@ -252,7 +256,7 @@ export default function MobilePOS({
 
   const updateQuantity = (productId, delta, color = null) => {
     const prod = products.find(p => p.id === productId);
-    let maxAvail = getStock(activeLocationId, productId);
+    let maxAvail = isCustomerView ? getTotalStock(productId) : getStock(activeLocationId, productId);
     if (color && prod && Array.isArray(prod.colors)) {
       const colObj = prod.colors.find(c => c.name.toLowerCase() === color.toLowerCase());
       if (colObj) {
@@ -543,7 +547,7 @@ export default function MobilePOS({
         /* Grid de Productos */
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
           {filteredProducts.map(product => {
-            const stock = getStock(activeLocationId, product.id);
+            const stock = isCustomerView ? getTotalStock(product.id) : getStock(activeLocationId, product.id);
             const inCartItems = cart.filter(c => c.productId === product.id);
             const totalInCartForProduct = inCartItems.reduce((sum, item) => sum + item.quantity, 0);
             const isOutOfStock = stock <= 0;
@@ -691,14 +695,18 @@ export default function MobilePOS({
                             onClick={(e) => {
                               if (!isCustomerView) {
                                 e.stopPropagation();
-                                const val = window.prompt(`Ingresa las existencias para "${product.name}":`, '6');
-                                if (val !== null) setQuickStock(product.id, val, activeLocationId);
+                                if (product.colors && product.colors.length > 0 && onEditProduct) {
+                                  onEditProduct(product);
+                                } else {
+                                  const val = window.prompt(`Ingresa las existencias para "${product.name}":`, '6');
+                                  if (val !== null) setQuickStock(product.id, val, activeLocationId);
+                                }
                               }
                             }}
                             className={`inline-flex items-center gap-1 text-[11px] font-black text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg ${
                               !isCustomerView ? 'cursor-pointer hover:bg-red-100' : ''
                             }`}
-                            title={!isCustomerView ? 'Click para asignar existencias manualmente' : ''}
+                            title={!isCustomerView ? (product.colors?.length > 0 ? 'Click para editar existencias por color' : 'Click para asignar existencias manualmente') : ''}
                           >
                             <span>🔴 Agotado</span>
                             {!isCustomerView && <span className="text-[9px] underline ml-1 text-red-500 font-normal">Ajustar</span>}
@@ -723,8 +731,12 @@ export default function MobilePOS({
                           onClick={(e) => {
                             if (!isCustomerView) {
                               e.stopPropagation();
-                              const val = window.prompt(`Modificar existencias de "${product.name}":`, stock.toString());
-                              if (val !== null) setQuickStock(product.id, val, activeLocationId);
+                              if (product.colors && product.colors.length > 0 && onEditProduct) {
+                                onEditProduct(product);
+                              } else {
+                                const val = window.prompt(`Modificar existencias de "${product.name}":`, stock.toString());
+                                if (val !== null) setQuickStock(product.id, val, activeLocationId);
+                              }
                             }
                           }}
                           className={`${
@@ -732,9 +744,9 @@ export default function MobilePOS({
                               ? 'inline-flex items-center gap-1 text-[11px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg animate-pulse' 
                               : 'inline-flex items-center gap-1 text-[11px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg'
                           } ${!isCustomerView ? 'cursor-pointer hover:opacity-80' : ''}`}
-                          title={!isCustomerView ? 'Click para cambiar existencia rápidamente' : ''}
+                          title={!isCustomerView ? (product.colors?.length > 0 ? 'Click para editar existencias por color' : 'Click para cambiar existencia rápidamente') : ''}
                         >
-                          <span>{stock <= 5 ? `🔥 ¡Solo quedan ${stock} piezas!` : `🟢 ${stock} disponibles`}</span>
+                          <span>{stock <= 5 ? (stock === 1 ? '🔥 ¡Solo queda 1 pieza!' : `🔥 ¡Solo quedan ${stock} piezas!`) : `🟢 ${stock} disponibles`}</span>
                         </button>
                       )}
                     </div>
@@ -917,26 +929,43 @@ export default function MobilePOS({
               </div>
             )}
 
-            <button
-              onClick={() => {
-                const prod = previewProduct;
-                setPreviewProduct(null);
-                handleInitiateAddToCart(prod);
-              }}
-              className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-rose-600 text-white font-extrabold text-sm rounded-2xl shadow-lg shadow-pink-500/25 hover:from-pink-600 hover:to-rose-700 active:scale-95 transition-all flex items-center justify-center gap-2"
-            >
-              {previewProduct.colors && previewProduct.colors.length > 0 ? (
-                <>
-                  <Palette className="w-5 h-5" />
-                  <span>Elegir Color y Agregar (${previewProduct.salePrice.toFixed(2)})</span>
-                </>
-              ) : (
-                <>
-                  <Plus className="w-5 h-5" />
-                  <span>Agregar al Pedido (${previewProduct.salePrice.toFixed(2)})</span>
-                </>
-              )}
-            </button>
+            {(() => {
+              const previewStock = isCustomerView
+                ? getTotalStock(previewProduct.id)
+                : getStock(activeLocationId, previewProduct.id);
+              const isPreviewOutOfStock = previewStock <= 0;
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prod = previewProduct;
+                    setPreviewProduct(null);
+                    handleInitiateAddToCart(prod);
+                  }}
+                  disabled={isPreviewOutOfStock}
+                  className={`w-full py-3.5 text-white font-extrabold text-sm rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 ${
+                    isPreviewOutOfStock
+                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                      : 'bg-gradient-to-r from-pink-500 to-rose-600 shadow-pink-500/25 hover:from-pink-600 hover:to-rose-700 active:scale-95'
+                  }`}
+                >
+                  {isPreviewOutOfStock ? (
+                    <span>🔴 Sin Existencia (Agotado)</span>
+                  ) : previewProduct.colors && previewProduct.colors.length > 0 ? (
+                    <>
+                      <Palette className="w-5 h-5" />
+                      <span>Elegir Color y Agregar (${previewProduct.salePrice.toFixed(2)})</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-5 h-5" />
+                      <span>Agregar al Pedido (${previewProduct.salePrice.toFixed(2)})</span>
+                    </>
+                  )}
+                </button>
+              );
+            })()}
 
           </div>
         </div>

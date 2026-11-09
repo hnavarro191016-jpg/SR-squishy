@@ -623,11 +623,25 @@ export default function ProductModal({ isOpen, onClose, productToEdit = null }) 
               </label>
               <input
                 type="number"
-                value={stock}
-                onChange={(e) => setStock(e.target.value)}
+                value={colors.length > 0 ? colors.reduce((sum, c) => sum + (parseInt(c.stock) || 0), 0) : stock}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setStock(val);
+                  if (colors.length === 1) {
+                    setColors([{ ...colors[0], stock: Math.max(0, parseInt(val) || 0).toString() }]);
+                  }
+                }}
+                disabled={colors.length > 1}
                 placeholder="10"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-900 outline-none"
+                className={`w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-black text-slate-900 outline-none ${
+                  colors.length > 1 ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50'
+                }`}
               />
+              {colors.length > 1 && (
+                <p className="text-[10px] text-slate-400 mt-1">
+                  💡 Para productos con múltiples colores, ajusta la cantidad de cada color en la sección de colores arriba.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-[11px] font-bold text-slate-500 block mb-1">En el Punto de Venta:</label>
