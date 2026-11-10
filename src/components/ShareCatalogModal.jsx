@@ -7,8 +7,10 @@ export default function ShareCatalogModal({ isOpen, onClose }) {
   const { whatsappNumber } = useApp();
   const [copied, setCopied] = useState(false);
 
-  // URL Oficial y directa que funciona garantizada en todos los celulares
-  const catalogUrl = 'https://sr-squishy-new.vercel.app/?catalogo=1';
+  // URL Oficial y directa que funciona dinámicamente con el dominio activo
+  const catalogUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/?catalogo=1`
+    : 'https://sr-squishy.vercel.app/?catalogo=1';
 
   if (!isOpen) return null;
 
