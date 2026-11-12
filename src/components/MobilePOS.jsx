@@ -112,6 +112,7 @@ export default function MobilePOS({
   const { 
     locations, 
     products, 
+    inventory,
     activeLocationId, 
     setActiveLocationId, 
     getStock, 
@@ -127,6 +128,7 @@ export default function MobilePOS({
   } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState('Todas');
+  const [stockFilter, setStockFilter] = useState('all'); // 'all' | 'in_stock' | 'out_of_stock'
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState([]);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -173,14 +175,35 @@ export default function MobilePOS({
   // Categorías
   const categories = ['Todas', ...new Set(products.map(p => p.category))];
 
-  // Productos filtrados
+  // Conteo de existencias para los botones de filtro
+  const stockCounts = useMemo(() => {
+    let inStock = 0;
+    let outOfStock = 0;
+    products.forEach(p => {
+      const s = isCustomerView ? getTotalStock(p.id) : getStock(activeLocationId, p.id);
+      if (s > 0) inStock++;
+      else outOfStock++;
+    });
+    return { inStock, outOfStock, total: products.length };
+  }, [products, isCustomerView, activeLocationId, getTotalStock, getStock, inventory]);
+
+  // Productos filtrados por categoría, búsqueda y filtro de existencia
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
       const matchesCat = selectedCategory === 'Todas' || p.category === selectedCategory;
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesCat && matchesSearch;
+      
+      const s = isCustomerView ? getTotalStock(p.id) : getStock(activeLocationId, p.id);
+      let matchesStock = true;
+      if (stockFilter === 'in_stock') {
+        matchesStock = s > 0;
+      } else if (stockFilter === 'out_of_stock') {
+        matchesStock = s <= 0;
+      }
+
+      return matchesCat && matchesSearch && matchesStock;
     });
-  }, [products, selectedCategory, searchTerm]);
+  }, [products, selectedCategory, searchTerm, stockFilter, isCustomerView, activeLocationId, getTotalStock, getStock, inventory]);
 
   // Totales de carrito
   const cartTotals = useMemo(() => {
@@ -490,22 +513,92 @@ export default function MobilePOS({
 
         </div>
 
-        {/* Chips de Categorías */}
-        {products.length > 0 && categories.length > 1 && (
-          <div className="flex gap-1.5 overflow-x-auto pt-2 pb-1 scrollbar-none no-scrollbar">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                  selectedCategory === cat
-                    ? 'bg-pink-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+        {/* Barra de Filtros: Categorías y Existencias */}
+        {products.length > 0 && (
+          <div className="pt-2 pb-1 space-y-2.5 border-t border-slate-100">
+            {/* Chips de Categorías */}
+            {categories.length > 1 && (
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-none no-scrollbar">
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                      selectedCategory === cat
+                        ? 'bg-pink-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Selector de Existencia (Todos / Con Existencia / Sin Existencia) */}
+            <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+              <div className="inline-flex items-center p-1 bg-slate-100 rounded-2xl text-xs font-bold gap-1 border border-slate-200/60 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                    stockFilter === 'all'
+                      ? 'bg-white text-slate-900 shadow-sm font-extrabold'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <span>Todos</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    stockFilter === 'all' ? 'bg-slate-200 text-slate-800' : 'bg-slate-200/70 text-slate-500'
+                  }`}>
+                    {stockCounts.total}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('in_stock')}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                    stockFilter === 'in_stock'
+                      ? 'bg-emerald-600 text-white shadow-sm font-extrabold'
+                      : 'text-slate-600 hover:text-emerald-700 hover:bg-white/60'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${stockFilter === 'in_stock' ? 'bg-white' : 'bg-emerald-500'}`}></span>
+                  <span>Con Existencia</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    stockFilter === 'in_stock' ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    {stockCounts.inStock}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('out_of_stock')}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                    stockFilter === 'out_of_stock'
+                      ? 'bg-rose-600 text-white shadow-sm font-extrabold'
+                      : 'text-slate-600 hover:text-rose-700 hover:bg-white/60'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${stockFilter === 'out_of_stock' ? 'bg-white' : 'bg-rose-500'}`}></span>
+                  <span>Sin Existencia</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    stockFilter === 'out_of_stock' ? 'bg-rose-700 text-white' : 'bg-rose-100 text-rose-800'
+                  }`}>
+                    {stockCounts.outOfStock}
+                  </span>
+                </button>
+              </div>
+
+              {/* Indicador sutil de almacén/tienda */}
+              {!isCustomerView && (
+                <div className="text-[11px] text-slate-400 font-medium hidden sm:block">
+                  Existencias en: <b className="text-slate-600">{currentLocation.name}</b>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -542,6 +635,34 @@ export default function MobilePOS({
               <span>+ Subir Squishy con Fotos</span>
             </button>
           )}
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-slate-200 shadow-sm space-y-3">
+          <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center text-3xl mx-auto">
+            {stockFilter === 'in_stock' ? '📦' : stockFilter === 'out_of_stock' ? '✨' : '🔍'}
+          </div>
+          <div className="max-w-sm mx-auto space-y-1">
+            <h3 className="text-base font-black text-slate-800">
+              {stockFilter === 'in_stock' 
+                ? 'No hay squishys con existencia' 
+                : stockFilter === 'out_of_stock' 
+                ? '¡No hay squishys agotados!' 
+                : 'No se encontraron squishys'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {stockFilter === 'in_stock'
+                ? 'Todos los modelos en esta categoría o búsqueda están agotados actualmente.'
+                : stockFilter === 'out_of_stock'
+                ? '¡Excelente! Todos los modelos mostrados tienen existencias disponibles.'
+                : 'Prueba cambiando de categoría o borrando el término de búsqueda.'}
+            </p>
+          </div>
+          <button
+            onClick={() => { setStockFilter('all'); setSelectedCategory('Todas'); setSearchTerm(''); }}
+            className="px-4 py-2 rounded-xl bg-pink-50 text-pink-600 font-bold text-xs hover:bg-pink-100 transition-colors"
+          >
+            Mostrar todos los squishys
+          </button>
         </div>
       ) : (
         /* Grid de Productos */
